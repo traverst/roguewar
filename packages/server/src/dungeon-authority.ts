@@ -2,20 +2,14 @@ import {
     GameState,
     Action,
     resolveTurn,
-    initGame, // Wait, I didn't export initGame from rules in Phase 2? 
-    // In Phase 2 verify, I implemented `createInitialState` in client/main.ts manually.
-    // I MUST move that to rules now or copy it here. 
-    // Strictness says: "Use shared rules package verbatim".
-    // If rules doesn't export initGame, I should probably add it to rules first or copy logic.
-    // Adding to rules is cleaner. Phase 3 says "Phase 2 produced a shared... rules package".
-    // I will check rules exports first. If missing, I'll implement a helper here using DungeonGenerator (which IS exported).
     DungeonGenerator,
-    GameEvent,
     EntityType,
-    mulberry32
+    mulberry32,
+    Position,
+    Entity
 } from '@roguewar/rules';
 
-import { ServerMessage } from './protocol';
+import { ServerMessage } from './protocol.js';
 
 /**
  * The Authoritative Instance.
@@ -37,28 +31,8 @@ export class DungeonAuthority {
         const gen = new DungeonGenerator(50, 50, rng);
         const { tiles, spawn, enemies } = gen.generate();
 
-        const player = {
-            id: 'player', // Single player hardcoded for now? Protocol has playerId.
-            // Phase 3 allows multiple clients but Phase 1/2 was single player logic.
-            // The logic supports "player" type. 
-            // For Phase 3, let's assume one "hero" or maybe allow multiple?
-            // "Roguewar is a browser-based multiplayer roguelike".
-            // So we should support multiple players?
-            // Phase 2 Types has `entities: Entity[]`. 
-            // I should spawn a player entity when they join? Or pre-spawn?
-            // "One authoritative instance per dungeon". "Track connected players".
-            // Let's just spawn 'player' at start. 
-            // If we support multiplayer, we need dynamic spawning on join.
-            // Requirement A: "Track connected players".
-            type: EntityType.Player,
-            pos: spawn,
-            hp: 100,
-            maxHp: 100,
-            attack: 10
-        };
-
-        const entityList = [player];
-        enemies.forEach((pos, idx) => {
+        const entityList: Entity[] = [];
+        enemies.forEach((pos: Position, idx: number) => {
             entityList.push({
                 id: `enemy_${idx}`,
                 type: EntityType.Enemy,
@@ -77,14 +51,27 @@ export class DungeonAuthority {
         };
     }
 
-    public connect(playerId: string): ServerMessage {
+    public connect(playerId: string): { welcome: ServerMessage; broadcast: ServerMessage } {
         this.connectedPlayers.add(playerId);
-        // In a real MMO, we might spawn them here.
-        // For now, we return the current state so they can sync.
+
+        // Process Join Action
+        const joinAction: Action = { type: 'join', actorId: playerId };
+        const { nextState, events } = resolveTurn(this.state, joinAction);
+
+        this.state = nextState;
+
         return {
-            type: 'welcome',
-            playerId, // Echo back
-            initialState: this.state
+            welcome: {
+                type: 'welcome',
+                playerId,
+                initialState: this.state
+            },
+            broadcast: {
+                type: 'delta',
+                turn: this.state.turn,
+                events,
+                action: joinAction
+            }
         };
     }
 
@@ -112,7 +99,8 @@ export class DungeonAuthority {
         return {
             type: 'delta',
             turn: this.state.turn,
-            events
+            events,
+            action
         };
     }
 }

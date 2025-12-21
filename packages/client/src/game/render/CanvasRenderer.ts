@@ -18,21 +18,26 @@ export class CanvasRenderer {
         this.height = canvas.height;
     }
 
-    render(state: GameState) {
+    render(state: GameState, localPlayerId?: string | null) {
         // Clear
         this.ctx.fillStyle = '#000';
         this.ctx.fillRect(0, 0, this.width, this.height);
 
         // Find player to center camera
-        const player = state.entities.find(e => e.type === EntityType.Player);
-        if (!player) return;
+        // If localPlayerId is known, center on THAT player. Otherwise find ANY player (fallback).
+        let centerEntity = state.entities.find(e => e.id === localPlayerId);
+        if (!centerEntity) {
+            centerEntity = state.entities.find(e => e.type === EntityType.Player);
+        }
 
-        // Camera offset (player is in center)
+        if (!centerEntity) return;
+
+        // Camera offset
         const centerX = this.width / 2;
         const centerY = this.height / 2;
 
-        const offsetX = centerX - player.pos.x * TILE_SIZE - TILE_SIZE / 2;
-        const offsetY = centerY - player.pos.y * TILE_SIZE - TILE_SIZE / 2;
+        const offsetX = centerX - centerEntity.pos.x * TILE_SIZE - TILE_SIZE / 2;
+        const offsetY = centerY - centerEntity.pos.y * TILE_SIZE - TILE_SIZE / 2;
 
         this.ctx.save();
         this.ctx.translate(offsetX, offsetY);
@@ -57,6 +62,13 @@ export class CanvasRenderer {
                 this.ctx.fillStyle = COLOR_ENEMY;
             }
             this.ctx.fillRect(entity.pos.x * TILE_SIZE, entity.pos.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+
+            // Highlight Local Player
+            if (localPlayerId && entity.id === localPlayerId) {
+                this.ctx.strokeStyle = '#ffd700'; // Gold
+                this.ctx.lineWidth = 2;
+                this.ctx.strokeRect(entity.pos.x * TILE_SIZE, entity.pos.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            }
         });
 
         this.ctx.restore();
@@ -64,6 +76,10 @@ export class CanvasRenderer {
         // Draw UI overlay
         this.ctx.fillStyle = '#fff';
         this.ctx.font = '16px monospace';
-        this.ctx.fillText(`Turn: ${state.turn} | HP: ${player.hp}/${player.maxHp}`, 10, 20);
+        if (centerEntity && centerEntity.type === EntityType.Player) {
+            this.ctx.fillText(`Turn: ${state.turn} | HP: ${centerEntity.hp}/${centerEntity.maxHp}`, 10, 20);
+        } else {
+            this.ctx.fillText(`Turn: ${state.turn} | Spectating`, 10, 20);
+        }
     }
 }

@@ -10,6 +10,7 @@ export type ServerMessage = {
     type: 'delta';
     turn: number;
     events: GameEvent[];
+    action: Action;
 } | {
     type: 'error';
     message: string;

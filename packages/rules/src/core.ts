@@ -72,6 +72,45 @@ export function resolveTurn(initialState: GameState, action: Action): { nextStat
         }
     }
 
+    // 1.5 Handle Join Action
+    if (action.type === 'join') {
+        if (!state.entities.find(e => e.id === action.actorId)) {
+            // Find valid spawn deterministically
+            // Scan for first free floor tile from (5,5)
+            let spawnX = 5;
+            let spawnY = 5;
+            let found = false;
+
+            // Pseudo-random offset based on actorId length to prevent stacking
+            const offset = action.actorId.length * 7;
+
+            for (let y = 2; y < 48; y++) {
+                for (let x = 2; x < 48; x++) {
+                    const cx = (x + offset) % 46 + 2;
+                    const cy = (y + offset) % 46 + 2; // Keep away from edges
+                    if (state.dungeon[cy][cx].type === 'floor' && !getEntityAt(state, cx, cy)) {
+                        spawnX = cx;
+                        spawnY = cy;
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) break;
+            }
+
+            const newPlayer: Entity = {
+                id: action.actorId,
+                type: EntityType.Player,
+                pos: { x: spawnX, y: spawnY },
+                hp: 100,
+                maxHp: 100,
+                attack: 10
+            };
+            state.entities.push(newPlayer);
+            events.push({ type: 'spawned', entityId: newPlayer.id, pos: newPlayer.pos, entity: newPlayer });
+        }
+    }
+
     // 2. Process Enemies
     // Deterministic AI requires iterating in a stable order (by ID or index)
     const enemies = state.entities.filter(e => e.type === EntityType.Enemy && e.hp > 0);

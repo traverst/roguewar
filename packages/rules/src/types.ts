@@ -48,14 +48,14 @@ export type GameStateStrict = {
 }
 
 // Events
-export type GameEventType = 'moved' | 'attacked' | 'killed' | 'wait';
+export type GameEventType = 'moved' | 'attacked' | 'killed' | 'wait' | 'spawned';
 
 export interface GameEvent {
     type: GameEventType;
     [key: string]: any;
 }
 
-export type ActionType = 'move' | 'attack' | 'wait';
+export type ActionType = 'move' | 'attack' | 'wait' | 'join';
 
 export interface Action {
     type: ActionType;
