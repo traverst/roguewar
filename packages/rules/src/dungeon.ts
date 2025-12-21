@@ -1,0 +1,120 @@
+import { Tile, Position } from './types';
+import { PRNG, randomInt } from './rng';
+
+export class DungeonGenerator {
+    width: number;
+    height: number;
+    tiles: Tile[][];
+    rooms: Room[];
+    rng: PRNG;
+
+    constructor(width: number, height: number, rng: PRNG) {
+        this.width = width;
+        this.height = height;
+        this.tiles = [];
+        this.rooms = [];
+        this.rng = rng;
+    }
+
+    generate(): { tiles: Tile[][]; spawn: Position; enemies: Position[] } {
+        // Initialize with walls
+        for (let y = 0; y < this.height; y++) {
+            const row: Tile[] = [];
+            for (let x = 0; x < this.width; x++) {
+                row.push({ type: 'wall', seen: false });
+            }
+            this.tiles.push(row);
+        }
+
+        const maxRooms = 15;
+        const minSize = 4;
+        const maxSize = 10;
+
+        for (let i = 0; i < maxRooms; i++) {
+            const w = randomInt(this.rng, minSize, maxSize);
+            const h = randomInt(this.rng, minSize, maxSize);
+            const x = randomInt(this.rng, 1, this.width - w - 1);
+            const y = randomInt(this.rng, 1, this.height - h - 1);
+
+            const newRoom = new Room(x, y, w, h);
+
+            let failed = false;
+            for (const other of this.rooms) {
+                if (newRoom.intersects(other)) {
+                    failed = true;
+                    break;
+                }
+            }
+
+            if (!failed) {
+                this.createRoom(newRoom);
+                const center = newRoom.center();
+
+                if (this.rooms.length > 0) {
+                    const prevCenter = this.rooms[this.rooms.length - 1].center();
+
+                    if (randomInt(this.rng, 0, 2) === 1) {
+                        this.createHTunnel(prevCenter.x, center.x, prevCenter.y);
+                        this.createVTunnel(prevCenter.y, center.y, center.x);
+                    } else {
+                        this.createVTunnel(prevCenter.y, center.y, prevCenter.x);
+                        this.createHTunnel(prevCenter.x, center.x, center.y);
+                    }
+                }
+
+                this.rooms.push(newRoom);
+            }
+        }
+
+        const spawn = this.rooms[0].center();
+        const enemies = this.rooms.slice(1).map(r => r.center());
+
+        return { tiles: this.tiles, spawn, enemies };
+    }
+
+    createRoom(room: Room) {
+        for (let y = room.y1; y < room.y2; y++) {
+            for (let x = room.x1; x < room.x2; x++) {
+                this.tiles[y][x].type = 'floor';
+            }
+        }
+    }
+
+    createHTunnel(x1: number, x2: number, y: number) {
+        for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) {
+            this.tiles[y][x].type = 'floor';
+        }
+    }
+
+    createVTunnel(y1: number, y2: number, x: number) {
+        for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) {
+            this.tiles[y][x].type = 'floor';
+        }
+    }
+}
+
+class Room {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+
+    constructor(x: number, y: number, w: number, h: number) {
+        this.x1 = x;
+        this.y1 = y;
+        this.x2 = x + w;
+        this.y2 = y + h;
+    }
+
+    intersects(other: Room) {
+        return (this.x1 <= other.x2 && this.x2 >= other.x1 &&
+            this.y1 <= other.y2 && this.y2 >= other.y1);
+    }
+
+    center(): Position {
+        return {
+            x: Math.floor((this.x1 + this.x2) / 2),
+            y: Math.floor((this.y1 + this.y2) / 2)
+        };
+    }
+}

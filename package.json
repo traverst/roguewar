@@ -1,0 +1,12 @@
+{
+  "name": "roguewar-root",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:client": "npm run dev -w @roguewar/client",
+    "build:client": "npm run build -w @roguewar/client",
+    "test:rules": "npm test -w @roguewar/rules"
+  }
+}
