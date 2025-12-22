@@ -1,7 +1,7 @@
 import Peer, { DataConnection } from 'peerjs';
 import { Transport } from './Transport';
 import { ClientMessage, ServerMessage } from './protocol';
-import { HostEngine, AuthorityMessage } from '@roguewar/authority';
+import { HostEngine } from '@roguewar/authority';
 
 /**
  * Transport for the HOST.
@@ -21,9 +21,9 @@ export class HostTransport implements Transport {
     private messageCallback: ((msg: ServerMessage) => void) | null = null;
     private logger: (msg: string) => void;
 
-    constructor(logger: (msg: string) => void = console.log) {
+    constructor(logger: (msg: string) => void = console.log, engine?: HostEngine, requestedPeerId?: string) {
         // Explicitly configure PeerJS cloud server
-        this.peer = new Peer({
+        this.peer = new Peer(requestedPeerId as any, {
             host: '0.peerjs.com',
             port: 443,
             path: '/',
@@ -36,18 +36,18 @@ export class HostTransport implements Transport {
                 ]
             }
         });
-        this.engine = new HostEngine();
+        this.engine = engine || new HostEngine();
         this.logger = logger;
     }
 
-    async connect(): Promise<string> {
+    async connect(_targetId?: string, userId?: string): Promise<string> {
         return new Promise((resolve, reject) => {
             this.peer.on('open', (id) => {
                 this.logger(`Host initialized. Share this ID: ${id}`);
                 this.localPlayerId = id;
 
-                // Host also "joins" the game logic
-                const result = this.engine.connect(id);
+                // Host also "joins" the game logic using their persistent userId
+                const result = this.engine.connect(id, userId);
                 // Host gets welcome manually (no network)
                 this.dispatch(result.welcome);
 
@@ -58,32 +58,28 @@ export class HostTransport implements Transport {
             });
 
             this.peer.on('error', (err) => {
-                // Log but don't reject immediately as some errors are non-fatal
-                console.error("Host Peer Error:", err);
+                this.logger(`Host Peer Error: ${err}`);
+                reject(err);
             });
 
             this.peer.on('connection', (conn) => {
                 this.logger(`Host received connection from: ${conn.peer}`);
 
                 conn.on('open', () => {
-                    this.logger(`Peer connected: ${conn.peer}`);
+                    this.logger(`Peer connection open: ${conn.peer}. Waiting for identity...`);
                     this.connections.set(conn.peer, conn);
-
-                    // Connect peer to Engine
-                    const { welcome, broadcast } = this.engine.connect(conn.peer);
-
-                    // Send Welcome to Peer (PeerJS auto-serializes)
-                    conn.send(welcome);
-
-                    // Broadcast Join to EVERYONE ELSE
-                    this.broadcast(broadcast, conn.peer);
+                    // We WAIT for 'identity' message before calling engine.connect
                 });
 
                 conn.on('data', (data) => {
                     try {
-                        // PeerJS auto-deserializes, data is already an object
                         const msg = data as ClientMessage;
-                        if (msg.type === 'action') {
+                        if (msg.type === 'identity') {
+                            this.logger(`Peer identity received: ${conn.peer} -> ${msg.userId}`);
+                            const { welcome, broadcast } = this.engine.connect(conn.peer, msg.userId);
+                            conn.send(welcome);
+                            this.broadcast(broadcast, conn.peer);
+                        } else if (msg.type === 'action') {
                             this.processAction(msg.playerId, msg.action);
                         }
                     } catch (e) {
@@ -137,7 +133,7 @@ export class HostTransport implements Transport {
 
     send(msg: ClientMessage): void {
         // Host sending an action (loopback)
-        if (this.localPlayerId) {
+        if (msg.type === 'action' && this.localPlayerId) {
             this.processAction(this.localPlayerId, msg.action);
         }
     }

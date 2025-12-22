@@ -33,20 +33,18 @@ export class PeerTransport implements Transport {
         this.logger = logger;
     }
 
-    async connect(targetId: string): Promise<string> {
+    async connect(targetId: string, userId: string): Promise<string> {
         return new Promise((resolve, reject) => {
             // Failsafe timeout
             const timeout = setTimeout(() => {
                 reject("Connection timed out (15s). Host not found or blocked.");
             }, 15000);
 
-            let isSignalingConnected = false;
             let myPeerId: string;
 
             this.peer.on('open', (id) => {
                 this.logger('My Peer ID is: ' + id);
                 myPeerId = id;
-                isSignalingConnected = true;
 
                 // Now that we're connected to signaling server, connect to target
                 this.logger(`Attempting to connect to ${targetId}...`);
@@ -54,8 +52,12 @@ export class PeerTransport implements Transport {
 
                 conn.on('open', () => {
                     clearTimeout(timeout);
-                    this.logger(`Connected to Host: ${targetId}`);
+                    this.logger(`Connected to Host: ${targetId}. Sending identity: ${userId}`);
                     this.conn = conn;
+
+                    // Immediately send identity
+                    this.conn.send({ type: 'identity', userId });
+
                     resolve(myPeerId);
                 });
 

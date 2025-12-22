@@ -4,6 +4,9 @@ export type ClientMessage = {
     type: 'action';
     playerId: string;
     action: Action;
+} | {
+    type: 'identity';
+    userId: string;
 };
 
 export type ServerMessage = {

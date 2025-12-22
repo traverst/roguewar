@@ -7,7 +7,7 @@ export interface Transport {
      * Peer: Connects to a room.
      * Returns the local player ID.
      */
-    connect(targetId?: string): Promise<string>;
+    connect(targetId?: string, userId?: string): Promise<string>;
 
     send(msg: ClientMessage): void; // Sending INTENT
 
