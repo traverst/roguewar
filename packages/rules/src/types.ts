@@ -26,6 +26,7 @@ export interface Entity {
     hp: number;
     maxHp: number;
     attack: number;
+    aiBehavior?: string; // Optional: For AI debugging/visualization
 }
 
 export interface GameState {

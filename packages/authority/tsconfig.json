@@ -13,6 +13,9 @@
         "paths": {
             "@roguewar/rules": [
                 "../rules/src/index.ts"
+            ],
+            "@roguewar/ai": [
+                "../ai/src/index.ts"
             ]
         }
     },

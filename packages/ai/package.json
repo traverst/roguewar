@@ -1,0 +1,13 @@
+{
+    "name": "@roguewar/ai",
+    "version": "0.1.0",
+    "type": "module",
+    "main": "./src/index.ts",
+    "scripts": {
+        "build": "tsc",
+        "test": "echo \"AI tests not yet implemented\" && exit 0"
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0"
+    }
+}

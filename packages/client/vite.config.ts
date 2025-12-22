@@ -9,7 +9,8 @@ export default defineConfig({
     resolve: {
         alias: {
             '@roguewar/rules': path.resolve(__dirname, '../rules/src/index.ts'),
-            '@roguewar/authority': path.resolve(__dirname, '../authority/src/index.ts')
+            '@roguewar/authority': path.resolve(__dirname, '../authority/src/index.ts'),
+            '@roguewar/ai': path.resolve(__dirname, '../ai/src/index.ts')
         }
     }
 });

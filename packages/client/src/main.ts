@@ -42,6 +42,16 @@ gameDiv.innerHTML = `
     <div id="instructions" style="color: #888; font-family: monospace; font-size: 12px; margin-top: 5px;">
       <span>[WASD/Arrows]: Move/Attack</span> | <span>[Space]: Wait</span>
     </div>
+    <div id="aiLegend" style="color: #888; font-family: monospace; font-size: 11px; margin-top: 5px; padding: 5px; background: #111; border: 1px solid #333;">
+      <strong style="color: #ffd700;">AI Behaviors:</strong> 
+      <span style="color: #00ffff;">🔵 CHASE</span> | 
+      <span style="color: #ff00ff;">🟣 ATTACK</span> | 
+      <span style="color: #ffff00;">🟡 FLEE</span> | 
+      <span style="color: #ffffff;">⚪ WAIT</span>
+    </div>
+    <div style="margin-top: 5px;">
+      <button id="btnSpawnAI" style="padding: 5px 10px; font-size: 12px; cursor: pointer; background: #333; color: white; border: 1px solid #555;">Spawn AI Bot</button>
+    </div>
     <div id="log" style="height: 100px; overflow-y: scroll; border: 1px solid #333; margin-top: 10px; font-family: monospace; font-size: 12px; text-align: left; padding: 5px; background: #000; color: #888;"></div>
 `;
 
@@ -61,6 +71,27 @@ function startGame(transport: Transport) {
   input = new InputManager(); // Enable input
 
   gameManager = new ClientGameManager(renderer, input, transport);
+
+  // Setup Spawn AI button (only for Host)
+  const spawnBtn = document.getElementById('btnSpawnAI') as HTMLButtonElement | null;
+  if (spawnBtn && transport instanceof HostTransport) {
+    spawnBtn.onclick = () => {
+      log('Spawning AI...');
+
+      try {
+        const aiId = transport.spawnAI();
+        log(`✅ AI Bot spawned: ${aiId}`);
+      } catch (error) {
+        log(`❌ Spawn failed: ${error}`);
+        console.error('AI Spawn Error:', error);
+      }
+    };
+    log('Spawn AI button enabled (Host mode)');
+  } else if (spawnBtn) {
+    // Hide button for non-hosts
+    spawnBtn.style.display = 'none';
+    log('Spawn AI button hidden (Peer mode)');
+  }
 
   requestAnimationFrame(gameLoop);
 }

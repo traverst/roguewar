@@ -100,7 +100,7 @@ export function resolveTurn(initialState: GameState, action: Action): { nextStat
 
             const newPlayer: Entity = {
                 id: action.actorId,
-                type: EntityType.Player,
+                type: action.actorId.startsWith('ai-') ? EntityType.Enemy : EntityType.Player,
                 pos: { x: spawnX, y: spawnY },
                 hp: 100,
                 maxHp: 100,

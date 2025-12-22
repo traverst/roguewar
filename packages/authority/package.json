@@ -9,7 +9,8 @@
         "build": "tsc"
     },
     "dependencies": {
-        "@roguewar/rules": "*"
+        "@roguewar/rules": "*",
+        "@roguewar/ai": "*"
     },
     "devDependencies": {
         "typescript": "^5.2.2"

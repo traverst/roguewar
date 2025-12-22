@@ -10,7 +10,7 @@ import { HostEngine, AuthorityMessage } from '@roguewar/authority';
  */
 export class HostTransport implements Transport {
     private peer: Peer;
-    private engine: HostEngine;
+    public engine: HostEngine; // Public so UI can spawn AI
     private connections: Map<string, DataConnection> = new Map();
     private localPlayerId: string | null = null;
 
@@ -153,5 +153,17 @@ export class HostTransport implements Transport {
 
     disconnect(): void {
         this.peer.destroy();
+    }
+
+    /**
+     * Spawn an AI player and broadcast the join event to all clients.
+     */
+    public spawnAI(id?: string): string {
+        const result = this.engine.spawnAI(id);
+
+        // Broadcast the join to all clients (including local)
+        this.broadcast(result.broadcast);
+
+        return result.welcome.playerId;
     }
 }

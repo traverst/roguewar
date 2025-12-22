@@ -33,12 +33,19 @@ export class ClientGameManager {
         });
     }
 
-    private handleDelta(msg: { turn: number; events: GameEvent[]; action: Action }) {
+    private handleDelta(msg: { turn: number; events: GameEvent[]; action: Action; currentState?: GameState }) {
         // console.log("Handling Delta:", msg); // Verbose
         if (!this.authoritativeState) return;
 
-        const { nextState } = resolveTurn(this.authoritativeState, msg.action);
-        this.authoritativeState = nextState;
+        // If server sent full currentState, use it (includes AI behaviors)
+        if (msg.currentState) {
+            console.log('[Client] Using currentState from server (includes AI behaviors)');
+            this.authoritativeState = msg.currentState;
+        } else {
+            // Otherwise, apply action to current state
+            const { nextState } = resolveTurn(this.authoritativeState, msg.action);
+            this.authoritativeState = nextState;
+        }
 
         this.predictedState = JSON.parse(JSON.stringify(this.authoritativeState));
 

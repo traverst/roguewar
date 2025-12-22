@@ -3,7 +3,7 @@ import { GameState, EntityType, TILE_SIZE } from '@roguewar/rules';
 const COLOR_FLOOR = '#222';
 const COLOR_WALL = '#555';
 const COLOR_PLAYER = '#0f0';
-const COLOR_ENEMY = '#f00';
+const COLOR_ENEMY = '#ff8800'; // Orange for non-AI enemies
 
 export class CanvasRenderer {
     ctx: CanvasRenderingContext2D;
@@ -56,11 +56,42 @@ export class CanvasRenderer {
 
         // Draw entities
         state.entities.forEach(entity => {
-            if (entity.type === EntityType.Player) {
-                this.ctx.fillStyle = COLOR_PLAYER;
-            } else {
-                this.ctx.fillStyle = COLOR_ENEMY;
+            // Debug: log AI entities
+            if (entity.id.startsWith('ai-')) {
+                console.log(`[Renderer] AI ${entity.id}: aiBehavior=${entity.aiBehavior}`);
             }
+
+            // Determine color based on AI behavior (if present)
+            if (entity.aiBehavior) {
+                // AI entities - color by behavior (distinct from player green)
+                switch (entity.aiBehavior) {
+                    case 'CHASE':
+                        this.ctx.fillStyle = '#00ffff'; // Cyan
+                        break;
+                    case 'ATTACK':
+                        this.ctx.fillStyle = '#ff00ff'; // Magenta
+                        break;
+                    case 'FLEE':
+                        this.ctx.fillStyle = '#ffff00'; // Yellow
+                        break;
+                    case 'WAIT':
+                        this.ctx.fillStyle = '#ffffff'; // White
+                        break;
+                    default:
+                        this.ctx.fillStyle = COLOR_ENEMY;
+                }
+            } else if (entity.id.startsWith('ai-')) {
+                // AI entity without behavior yet - default to white
+                this.ctx.fillStyle = '#ffffff'; // White
+            } else {
+                // Non-AI entities - use type color
+                if (entity.type === EntityType.Player) {
+                    this.ctx.fillStyle = COLOR_PLAYER;
+                } else {
+                    this.ctx.fillStyle = COLOR_ENEMY;
+                }
+            }
+
             this.ctx.fillRect(entity.pos.x * TILE_SIZE, entity.pos.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
 
             // Highlight Local Player
