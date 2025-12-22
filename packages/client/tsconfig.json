@@ -21,6 +21,9 @@
         "paths": {
             "@roguewar/rules": [
                 "../rules/src/index.ts"
+            ],
+            "@roguewar/authority": [
+                "../authority/src/index.ts"
             ]
         }
     },

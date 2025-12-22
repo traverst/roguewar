@@ -8,7 +8,8 @@ const __dirname = path.dirname(__filename);
 export default defineConfig({
     resolve: {
         alias: {
-            '@roguewar/rules': path.resolve(__dirname, '../rules/src/index.ts')
+            '@roguewar/rules': path.resolve(__dirname, '../rules/src/index.ts'),
+            '@roguewar/authority': path.resolve(__dirname, '../authority/src/index.ts')
         }
     }
 });

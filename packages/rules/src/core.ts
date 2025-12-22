@@ -1,5 +1,5 @@
-import { GameState, Action, Entity, EntityType, GameEvent, Position, ActionType } from './types';
-import { PRNG, mulberry32 } from './rng';
+import { GameState, Action, Entity, EntityType, GameEvent, Position, ActionType } from './types.js';
+import { PRNG, mulberry32 } from './rng.js';
 
 // Helper to deep clone state (essential for pure functions)
 function cloneState(state: GameState): GameState {

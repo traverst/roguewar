@@ -7,6 +7,10 @@
   "scripts": {
     "dev:client": "npm run dev -w @roguewar/client",
     "build:client": "npm run build -w @roguewar/client",
-    "test:rules": "npm test -w @roguewar/rules"
+    "test:rules": "npm test -w @roguewar/rules",
+    "signaling": "node signaling-server.js"
+  },
+  "devDependencies": {
+    "peer": "^1.0.2"
   }
 }
