@@ -1,9 +1,11 @@
-import { Action, GameEvent, GameState } from './types.js';
+import { Action, GameEvent, GameState } from './types';
+import { ModManifest } from './mods';
 
 export interface GameConfig {
     dungeonSeed: number;
     rngSeed: number;
     players: PlayerConfig[];
+    mods?: ModManifest[];
 }
 
 export interface PlayerConfig {

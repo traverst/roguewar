@@ -78,6 +78,26 @@ export class GameStorage {
         });
     }
 
+    async getLatestGame(): Promise<GameLog | null> {
+        const games = await this.listGames();
+        if (games.length === 0) return null;
+        return games.reduce((latest, current) =>
+            (current.meta.lastSaved || 0) > (latest.meta.lastSaved || 0) ? current : latest
+        );
+    }
+
+    async clearAll(): Promise<void> {
+        if (!this.db) throw new Error("Database not initialized");
+        return new Promise((resolve, reject) => {
+            const tx = this.db!.transaction(STORE_NAME, 'readwrite');
+            const store = tx.objectStore(STORE_NAME);
+            const request = store.clear();
+
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
     exportToJSON(log: GameLog): string {
         return JSON.stringify(log, null, 2);
     }

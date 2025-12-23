@@ -22,6 +22,7 @@ export enum EntityType {
 export interface Entity {
     id: string;
     type: EntityType;
+    templateId?: string; // Reference to modded content (e.g. 'core:goblin')
     pos: Position;
     hp: number;
     maxHp: number;

@@ -1,5 +1,6 @@
-import { GameState, Action, Entity, EntityType, GameEvent, Position, ActionType } from './types.js';
-import { PRNG, mulberry32 } from './rng.js';
+import { GameState, Action, Entity, EntityType, GameEvent, Position } from './types';
+import { PRNG, mulberry32 } from './rng';
+import { ModRegistry } from './mods';
 
 // Helper to deep clone state (essential for pure functions)
 function cloneState(state: GameState): GameState {
@@ -33,7 +34,7 @@ function getEntityAt(state: GameState, x: number, y: number): Entity | undefined
     return state.entities.find(e => e.pos.x === x && e.pos.y === y && e.hp > 0);
 }
 
-export function resolveTurn(initialState: GameState, action: Action): { nextState: GameState; events: GameEvent[] } {
+export function resolveTurn(initialState: GameState, action: Action, registry?: ModRegistry): { nextState: GameState; events: GameEvent[] } {
     const state = cloneState(initialState);
     const events: GameEvent[] = [];
 
@@ -98,14 +99,26 @@ export function resolveTurn(initialState: GameState, action: Action): { nextStat
                 if (found) break;
             }
 
-            const newPlayer: Entity = {
-                id: action.actorId,
-                type: action.actorId.startsWith('ai-') ? EntityType.Enemy : EntityType.Player,
-                pos: { x: spawnX, y: spawnY },
-                hp: 100,
-                maxHp: 100,
-                attack: 10
-            };
+            const templateId = action.payload?.templateId || (action.actorId.startsWith('ai-') ? 'core:goblin' : 'core:player');
+            let newPlayer: Entity | undefined;
+
+            if (registry) {
+                newPlayer = registry.createEntity(templateId, action.actorId, { x: spawnX, y: spawnY });
+            }
+
+            // Fallback for missing registry or template
+            if (!newPlayer) {
+                newPlayer = {
+                    id: action.actorId,
+                    type: action.actorId.startsWith('ai-') ? EntityType.Enemy : EntityType.Player,
+                    templateId,
+                    pos: { x: spawnX, y: spawnY },
+                    hp: 100,
+                    maxHp: 100,
+                    attack: 10
+                };
+            }
+
             state.entities.push(newPlayer);
             events.push({ type: 'spawned', entityId: newPlayer.id, pos: newPlayer.pos, entity: newPlayer });
         }

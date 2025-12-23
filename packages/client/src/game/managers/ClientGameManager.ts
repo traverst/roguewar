@@ -1,4 +1,4 @@
-import { Action, GameState, resolveTurn, GameEvent } from '@roguewar/rules';
+import { Action, GameState, resolveTurn, GameEvent, ModRegistry } from '@roguewar/rules';
 import { Transport } from '../net/Transport';
 import { CanvasRenderer } from '../render/CanvasRenderer';
 import { InputManager } from '../input/InputManager';
@@ -12,14 +12,31 @@ export class ClientGameManager {
     private predictedState: GameState | null = null;
     private isWaitingForServer: boolean = false;
     private localPlayerId: string | null = null;
+    private registry: ModRegistry | null;
 
-    constructor(renderer: CanvasRenderer, input: InputManager, transport: Transport) {
+    constructor(renderer: CanvasRenderer, input: InputManager, transport: Transport, registry: ModRegistry | null = null) {
         this.renderer = renderer;
         this.input = input;
         this.net = transport;
+        this.registry = registry;
 
         this.net.onMessage((msg) => {
             if (msg.type === 'welcome') {
+                // Verify mods if we have a registry
+                if (this.registry) {
+                    const hostMods = msg.mods;
+                    const localMods = this.registry.getAllManifests();
+                    const mismatch = hostMods.length !== localMods.length ||
+                        hostMods.some(h => !localMods.find(l => l.id === h.id && l.hash === h.hash));
+
+                    if (mismatch) {
+                        const error = `Mod Mismatch! Host mods: ${hostMods.map(m => m.id).join(', ')}`;
+                        console.error(error, "Local has:", localMods.map(m => m.id).join(', '));
+                        alert(error);
+                        return;
+                    }
+                }
+
                 this.localPlayerId = msg.playerId;
                 this.authoritativeState = msg.initialState;
                 this.predictedState = JSON.parse(JSON.stringify(this.authoritativeState));
@@ -43,7 +60,7 @@ export class ClientGameManager {
             this.authoritativeState = msg.currentState;
         } else {
             // Otherwise, apply action to current state
-            const { nextState } = resolveTurn(this.authoritativeState, msg.action);
+            const { nextState } = resolveTurn(this.authoritativeState, msg.action, this.registry || undefined);
             this.authoritativeState = nextState;
         }
 
@@ -76,7 +93,7 @@ export class ClientGameManager {
                 action.actorId = this.localPlayerId;
 
                 // Client-side prediction
-                const { nextState } = resolveTurn(this.predictedState, action);
+                const { nextState } = resolveTurn(this.predictedState, action, this.registry || undefined);
                 this.predictedState = nextState;
 
                 this.isWaitingForServer = true;

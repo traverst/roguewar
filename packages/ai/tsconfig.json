@@ -1,8 +1,8 @@
 {
     "extends": "../tsconfig.base.json",
     "compilerOptions": {
-        "outDir": "./dist",
-        "rootDir": "./src",
+        "moduleResolution": "bundler",
+        "baseUrl": ".",
         "paths": {
             "@roguewar/rules": [
                 "../rules/src/index.ts"
@@ -10,6 +10,6 @@
         }
     },
     "include": [
-        "src/**/*"
+        "src"
     ]
 }

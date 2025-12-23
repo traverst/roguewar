@@ -1,11 +1,14 @@
-import { GameLog, GameState } from '@roguewar/rules';
+import { GameLog, GameState, ModRegistry } from '@roguewar/rules';
 import { HostEngine } from '@roguewar/authority';
 
 export class ReplayEngine {
     private log: GameLog;
 
-    constructor(log: GameLog) {
+    private registry?: ModRegistry;
+
+    constructor(log: GameLog, registry?: ModRegistry) {
         this.log = log;
+        this.registry = registry;
     }
 
     /**
@@ -13,7 +16,7 @@ export class ReplayEngine {
      * This is a headless replay (no networking, no delay).
      */
     public replayAll(): GameState {
-        const engine = HostEngine.fromLog(this.log);
+        const engine = HostEngine.fromLog(this.log, this.registry);
         return engine.getState();
     }
 
@@ -23,7 +26,7 @@ export class ReplayEngine {
      */
     public *replaySteps(): Generator<{ turn: number; state: GameState }> {
         // We recreate the fromLog logic here to yield intermediate steps
-        const engine = new HostEngine(this.log.config.dungeonSeed, this.log.config);
+        const engine = new HostEngine(this.log.config.dungeonSeed, this.log.config, this.registry);
 
         yield { turn: 0, state: engine.getState() };
 

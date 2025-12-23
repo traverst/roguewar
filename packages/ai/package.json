@@ -2,12 +2,18 @@
     "name": "@roguewar/ai",
     "version": "0.1.0",
     "type": "module",
-    "main": "./src/index.ts",
+    "main": "src/index.ts",
+    "module": "src/index.ts",
+    "exports": {
+        ".": {
+            "import": "./src/index.ts",
+            "types": "./src/index.ts"
+        }
+    },
     "scripts": {
-        "build": "tsc",
-        "test": "echo \"AI tests not yet implemented\" && exit 0"
+        "build": "tsc"
     },
     "devDependencies": {
-        "typescript": "^5.0.0"
+        "typescript": "^5.2.2"
     }
 }

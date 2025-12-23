@@ -1,4 +1,4 @@
-import { Action, GameEvent, GameState } from '@roguewar/rules';
+import { Action, GameEvent, GameState, ModManifest } from '@roguewar/rules';
 
 export type ClientMessage = {
     type: 'action';
@@ -21,4 +21,5 @@ export type ServerMessage = {
     type: 'welcome';
     playerId: string;
     initialState: GameState;
+    mods: ModManifest[];
 };

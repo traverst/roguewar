@@ -2,6 +2,7 @@ import Peer, { DataConnection } from 'peerjs';
 import { Transport } from './Transport';
 import { ClientMessage, ServerMessage } from './protocol';
 import { HostEngine } from '@roguewar/authority';
+import { ModRegistry, ModManifest } from '@roguewar/rules';
 
 /**
  * Transport for the HOST.
@@ -21,7 +22,7 @@ export class HostTransport implements Transport {
     private messageCallback: ((msg: ServerMessage) => void) | null = null;
     private logger: (msg: string) => void;
 
-    constructor(logger: (msg: string) => void = console.log, engine?: HostEngine, requestedPeerId?: string) {
+    constructor(logger: (msg: string) => void = console.log, engine?: HostEngine, requestedPeerId?: string, registry?: ModRegistry) {
         // Explicitly configure PeerJS cloud server
         this.peer = new Peer(requestedPeerId as any, {
             host: '0.peerjs.com',
@@ -36,7 +37,7 @@ export class HostTransport implements Transport {
                 ]
             }
         });
-        this.engine = engine || new HostEngine();
+        this.engine = engine || new HostEngine(undefined, undefined, registry);
         this.logger = logger;
     }
 

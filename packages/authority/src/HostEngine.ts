@@ -11,7 +11,9 @@ import {
     GameLog,
     GameConfig,
     TurnRecord,
-    advanceTurn
+    advanceTurn,
+    ModRegistry,
+    ModManifest
 } from '@roguewar/rules';
 import { ReactiveBot, createPerception, AIPlayer } from '@roguewar/ai';
 
@@ -28,6 +30,7 @@ export type AuthorityMessage = {
     type: 'welcome';
     playerId: string;
     initialState: GameState;
+    mods: ModManifest[];
 }
 
 /**
@@ -36,7 +39,7 @@ export type AuthorityMessage = {
  * The 'broadcast' message goes to all peers (including the new one if desired).
  */
 export type ConnectResult = {
-    welcome: { type: 'welcome'; playerId: string; initialState: GameState };
+    welcome: { type: 'welcome'; playerId: string; initialState: GameState; mods: ModManifest[] };
     broadcast: { type: 'delta'; turn: number; events: GameEvent[]; action: Action };
 }
 
@@ -50,9 +53,11 @@ export class HostEngine {
     private aiPlayers: Map<string, AIPlayer> = new Map();
     private isReplaying: boolean = false;
     private gameLog: GameLog;
+    private registry: ModRegistry;
 
-    constructor(seed: number = Date.now(), config?: GameConfig) {
-        console.log(`[HostEngine] Constructor: seed=${seed}, hasConfig=${!!config}`);
+    constructor(seed: number = Date.now(), config?: GameConfig, registry?: ModRegistry) {
+        console.log(`[HostEngine] Constructor: seed=${seed}, hasConfig=${!!config}, hasRegistry=${!!registry}`);
+        this.registry = registry || new ModRegistry();
         this.gameLog = {
             meta: {
                 gameId: `game-${Date.now()}`,
@@ -63,7 +68,8 @@ export class HostEngine {
             config: config || {
                 dungeonSeed: seed,
                 rngSeed: seed,
-                players: []
+                players: [],
+                mods: this.registry.getAllManifests()
             },
             turns: []
         };
@@ -86,16 +92,12 @@ export class HostEngine {
         const entityList: Entity[] = [];
         enemies.forEach((pos: Position, idx: number) => {
             const id = `enemy_${idx}`;
-            entityList.push({
-                id,
-                type: EntityType.Enemy,
-                pos: pos,
-                hp: 30,
-                maxHp: 30,
-                attack: 5
-            });
-            // Initialize bot for dungeon enemy
-            this.aiPlayers.set(id, new ReactiveBot(id));
+            // Use core goblin template by default
+            const enemy = this.registry.createEntity('core:goblin', id, pos);
+            if (enemy) {
+                entityList.push(enemy);
+                this.aiPlayers.set(id, new ReactiveBot(id));
+            }
         });
 
         return {
@@ -118,7 +120,7 @@ export class HostEngine {
         // IDENTITY MARRIAGE: If player already exists (from replayed save), don't spawn again!
         const existing = this.state.entities.find(e => e.id === userId);
         if (!existing) {
-            const result = resolveTurn(this.state, joinAction);
+            const result = resolveTurn(this.state, joinAction, this.registry);
             this.state = result.nextState;
             events = result.events;
         } else {
@@ -145,7 +147,8 @@ export class HostEngine {
             welcome: {
                 type: 'welcome',
                 playerId: userId,
-                initialState: this.getState()
+                initialState: this.getState(),
+                mods: this.registry.getAllManifests()
             },
             broadcast: {
                 type: 'delta',
@@ -179,7 +182,7 @@ export class HostEngine {
             return result.broadcast;
         }
 
-        const { nextState, events } = resolveTurn(this.state, action);
+        const { nextState, events } = resolveTurn(this.state, action, this.registry);
         this.state = nextState;
 
         // AFTER human action, query AI for their actions
@@ -212,9 +215,9 @@ export class HostEngine {
         return JSON.parse(JSON.stringify(this.gameLog));
     }
 
-    public static fromLog(log: GameLog): HostEngine {
+    public static fromLog(log: GameLog, registry?: ModRegistry): HostEngine {
         console.log(`[HostEngine] Reconstructing from log. GameID: ${log.meta.gameId}, Turns: ${log.turns.length}`);
-        const engine = new HostEngine(log.config.dungeonSeed, log.config);
+        const engine = new HostEngine(log.config.dungeonSeed, log.config, registry);
         engine.isReplaying = true;
 
         for (let i = 0; i < log.turns.length; i++) {

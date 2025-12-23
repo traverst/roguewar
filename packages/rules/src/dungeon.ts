@@ -1,5 +1,5 @@
-import { Tile, Position } from './types.js';
-import { PRNG, randomInt } from './rng.js';
+import { Tile, Position } from './types';
+import { PRNG, randomInt } from './rng';
 
 export class DungeonGenerator {
     width: number;

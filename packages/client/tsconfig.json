@@ -24,6 +24,9 @@
             ],
             "@roguewar/authority": [
                 "../authority/src/index.ts"
+            ],
+            "@roguewar/ai": [
+                "../ai/src/index.ts"
             ]
         }
     },
