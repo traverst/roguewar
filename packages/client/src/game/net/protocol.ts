@@ -7,6 +7,8 @@ export type ClientMessage = {
 } | {
     type: 'identity';
     userId: string;
+} | {
+    type: 'spectate';
 };
 
 export type ServerMessage = {
@@ -22,4 +24,5 @@ export type ServerMessage = {
     playerId: string;
     initialState: GameState;
     mods: ModManifest[];
+    connectedEntityIds: string[];
 };

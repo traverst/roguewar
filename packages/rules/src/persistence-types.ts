@@ -24,6 +24,7 @@ export interface TurnRecord {
 export interface GameLog {
     meta: {
         gameId: string;
+        gameName?: string;
         saveId?: string; // Unique key for each discrete save point
         createdAt: number;
         rulesVersion: string;

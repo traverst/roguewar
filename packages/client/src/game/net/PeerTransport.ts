@@ -33,60 +33,82 @@ export class PeerTransport implements Transport {
         this.logger = logger;
     }
 
-    async connect(targetId: string, userId: string): Promise<string> {
+    private async internalConnect(targetId: string): Promise<DataConnection> {
         return new Promise((resolve, reject) => {
-            // Failsafe timeout
-            const timeout = setTimeout(() => {
-                reject("Connection timed out (15s). Host not found or blocked.");
-            }, 15000);
-
-            let myPeerId: string;
-
-            this.peer.on('open', (id) => {
-                this.logger('My Peer ID is: ' + id);
-                myPeerId = id;
-
-                // Now that we're connected to signaling server, connect to target
-                this.logger(`Attempting to connect to ${targetId}...`);
-                const conn = this.peer.connect(targetId);
-
-                conn.on('open', () => {
-                    clearTimeout(timeout);
-                    this.logger(`Connected to Host: ${targetId}. Sending identity: ${userId}`);
-                    this.conn = conn;
-
-                    // Immediately send identity
-                    this.conn.send({ type: 'identity', userId });
-
-                    resolve(myPeerId);
+            // If peer isn't open yet, wait for it
+            if (!this.peer.id) {
+                this.peer.once('open', () => {
+                    this.internalConnect(targetId).then(resolve).catch(reject);
                 });
+                return;
+            }
 
+            this.logger(`Attempting to connect to ${targetId}...`);
+            const conn = this.peer.connect(targetId);
+            const timeout = setTimeout(() => reject("Connection timed out"), 15000);
+
+            conn.on('open', () => {
+                clearTimeout(timeout);
+                this.conn = conn;
                 conn.on('data', (data) => {
-                    const msg = data as ServerMessage;
-                    this.dispatch(msg);
+                    console.log("[PeerTransport] Data received, type:", typeof data);
+                    if (typeof data === 'string') {
+                        try {
+                            const parsed = JSON.parse(data);
+                            console.log("[PeerTransport] Parsed message:", parsed.type);
+                            this.dispatch(parsed as ServerMessage);
+                        } catch (e) {
+                            console.error("[PeerTransport] Failed to parse JSON:", e);
+                        }
+                    } else {
+                        console.log("[PeerTransport] Object message:", data.type);
+                        this.dispatch(data as ServerMessage);
+                    }
                 });
-
-                conn.on('error', (err) => {
-                    this.logger(`Connection Error: ${err.type || err}`);
-                    reject(`Conn Error: ${err.type}`);
-                });
-
-                conn.on('close', () => {
-                    this.logger("Connection closed");
-                });
+                resolve(conn);
             });
 
-            this.peer.on('error', (err) => {
-                this.logger(`Peer Error: ${err.type || err}`);
-                reject(`Peer Error: ${err.type}`);
+            conn.on('error', (err) => {
+                clearTimeout(timeout);
+                console.error("Peer connection error:", err);
+                reject(err);
+            });
+
+            conn.on('close', () => {
+                this.logger("Connection closed");
             });
         });
     }
 
+    async connect(targetId: string, userId: string): Promise<string> {
+        const conn = await this.internalConnect(targetId);
+        this.logger(`Connected to Host: ${targetId}. Sending identity: ${userId}`);
+        // Give Host time to wire up listeners
+        await new Promise(r => setTimeout(r, 500));
+        conn.send({ type: 'identity', userId });
+        return this.peer.id;
+    }
+
+    async spectate(targetId: string): Promise<string> {
+        const conn = await this.internalConnect(targetId);
+        console.log("[PeerTransport] Connected to Host, sending spectate message...");
+        this.logger(`Connected to Host: ${targetId} as SPECTATOR.`);
+        // Give Host time to wire up listeners
+        await new Promise(r => setTimeout(r, 500));
+        const msg = { type: 'spectate' };
+        console.log("[PeerTransport] Sending:", msg);
+        conn.send(msg);
+        console.log("[PeerTransport] Spectate message sent");
+        return this.peer.id;
+    }
+
     private dispatch(msg: ServerMessage) {
+        console.log("[PeerTransport] dispatch() called, callback exists:", !!this.messageCallback, "msg type:", msg.type);
         if (this.messageCallback) {
+            console.log("[PeerTransport] Calling callback immediately");
             this.messageCallback(msg);
         } else {
+            console.log("[PeerTransport] Queueing message, queue length:", this.messageQueue.length);
             this.messageQueue.push(msg);
         }
     }
@@ -100,12 +122,15 @@ export class PeerTransport implements Transport {
     }
 
     onMessage(callback: (msg: ServerMessage) => void): void {
+        console.log("[PeerTransport] onMessage() called, queue length:", this.messageQueue.length);
         this.messageCallback = callback;
         // Flush queue
         while (this.messageQueue.length > 0) {
             const msg = this.messageQueue.shift()!;
+            console.log("[PeerTransport] Flushing queued message:", msg.type);
             this.messageCallback(msg);
         }
+        console.log("[PeerTransport] Queue flushed");
     }
 
     disconnect(): void {

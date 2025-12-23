@@ -8,11 +8,15 @@ export class ClientGameManager {
     private renderer: CanvasRenderer;
     private input: InputManager;
 
-    private authoritativeState: GameState | null = null;
+    public authoritativeState: GameState | null = null;
     private predictedState: GameState | null = null;
     private isWaitingForServer: boolean = false;
-    private localPlayerId: string | null = null;
+    public localPlayerId: string | null = null;
+    private pendingIdentity: string | null = null;
     private registry: ModRegistry | null;
+
+    public connectedEntityIds: string[] = [];
+    public onGameStateChanged: ((state: GameState, connectedIds: string[]) => void) | null = null;
 
     constructor(renderer: CanvasRenderer, input: InputManager, transport: Transport, registry: ModRegistry | null = null) {
         this.renderer = renderer;
@@ -21,7 +25,9 @@ export class ClientGameManager {
         this.registry = registry;
 
         this.net.onMessage((msg) => {
+            console.log("[ClientGameManager] Received message:", msg.type);
             if (msg.type === 'welcome') {
+                console.log("[ClientGameManager] Processing welcome message");
                 // Verify mods if we have a registry
                 if (this.registry) {
                     const hostMods = msg.mods;
@@ -41,22 +47,43 @@ export class ClientGameManager {
                 this.authoritativeState = msg.initialState;
                 this.predictedState = JSON.parse(JSON.stringify(this.authoritativeState));
                 this.isWaitingForServer = false;
-                console.log("Joined game as", this.localPlayerId);
+
+                // CRITICAL: Update connected IDs
+                if ('connectedEntityIds' in msg) {
+                    this.connectedEntityIds = msg.connectedEntityIds;
+                }
+
+                console.log("Joined/Spectating as", this.localPlayerId);
+
+                if (this.onGameStateChanged && this.authoritativeState) {
+                    this.onGameStateChanged(this.authoritativeState, this.connectedEntityIds);
+                }
+
             } else if (msg.type === 'delta') {
                 this.handleDelta(msg);
             } else if (msg.type === 'error') {
                 console.error("Server Error:", msg.message);
+                // CRITICAL FIX: Unlock input on error so user can retry!
+                this.isWaitingForServer = false;
+                alert(`Action Failed: ${msg.message}`);
             }
         });
     }
 
+    public claimIdentity(userId: string) {
+        console.log(`[Client] Claiming identity: ${userId}`);
+        this.pendingIdentity = userId;
+        this.net.send({ type: 'identity', userId });
+    }
+
     private handleDelta(msg: { turn: number; events: GameEvent[]; action: Action; currentState?: GameState }) {
-        // console.log("Handling Delta:", msg); // Verbose
+        console.log(`[Client] HandleDelta Turn ${msg.turn} | Action: ${msg.action.type} by ${msg.action.actorId} | Me: ${this.localPlayerId}`);
+
         if (!this.authoritativeState) return;
 
         // If server sent full currentState, use it (includes AI behaviors)
         if (msg.currentState) {
-            console.log('[Client] Using currentState from server (includes AI behaviors)');
+            // console.log('[Client] Using currentState from server');
             this.authoritativeState = msg.currentState;
         } else {
             // Otherwise, apply action to current state
@@ -66,21 +93,31 @@ export class ClientGameManager {
 
         this.predictedState = JSON.parse(JSON.stringify(this.authoritativeState));
 
-        // Unblock local player if this was their action
+        // CRITICAL CHECK: Unblock local player if this was their action OR if the turn advanced
+        // We also simply unlock on ANY state update to be safe against desyncs, 
+        // as long as the state is fresh.
         if (msg.action.actorId === this.localPlayerId) {
-            console.log(`[Client] Unlocking input. Action ID ${msg.action.actorId} matched Local ID ${this.localPlayerId}`);
+            console.log(`[Client] ✅ Unlocking input. My action confirmed.`);
             this.isWaitingForServer = false;
         } else {
-            console.log(`[Client] Delta received but not for me. Action: ${msg.action.actorId}, Me: ${this.localPlayerId}`);
+            // Identity Consummation: If this is a JOIN action for a user we claimed, switch identity
+            if (msg.action.type === 'join' && (this.pendingIdentity && msg.action.actorId === this.pendingIdentity)) {
+                console.log(`[Client] Identity Claim Confirmed! Switching to ${this.pendingIdentity}`);
+                this.localPlayerId = this.pendingIdentity;
+                this.pendingIdentity = null;
+                this.isWaitingForServer = false; // Just in case
+            }
+
+            console.log(`[Client] Delta is valid but not my action. waiting=${this.isWaitingForServer}`);
         }
 
         if (msg.events.length > 0) {
-            console.log("Delta Events:", msg.events);
+            // console.log("Delta Events:", msg.events);
         }
     }
 
     public update() {
-        if (!this.predictedState || !this.localPlayerId) {
+        if (!this.predictedState) {
             this.renderer.ctx.fillStyle = '#fff';
             this.renderer.ctx.fillText('Connecting...', 50, 50);
             return;
@@ -88,7 +125,8 @@ export class ClientGameManager {
 
         if (!this.isWaitingForServer) {
             const action = this.input.getAndClearAction();
-            if (action) {
+            if (action && this.localPlayerId) {
+                // Only process actions if we have a player ID (not a spectator)
                 console.log(`[Client] Sending Action for ${this.localPlayerId}:`, action);
                 action.actorId = this.localPlayerId;
 

@@ -1,22 +1,49 @@
 # RogueWar
 
-A browser-based multiplayer roguelike with a serverless authoritative core.
+A browser-based **peer-to-peer multiplayer roguelike** with deterministic gameplay and serverless architecture.
 
-## Project Status
+## ✨ Features
 
-This project is currently in **Phase 3** of development.
+- 🎮 **P2P Multiplayer**: Host and join games directly in the browser using PeerJS - no central server required
+- 👥 **Spectator Mode**: Watch ongoing games and switch between different player perspectives
+- 💾 **Save & Resume**: Games are automatically saved to localStorage and can be resumed anytime
+- 🔄 **Replay System**: Review past games turn-by-turn with full replay controls
+- 🎯 **Deterministic Game Logic**: Pure, testable game rules shared between all peers
+- 📱 **Network Play**: Access games from any device on your local network
+- 🎨 **Canvas Renderer**: Smooth HTML5 Canvas-based graphics
 
-- **Phase 1: Local Single Player** - Implemented basic dungeon generation, movement, combat, and rendering.
-- **Phase 2: Shared Rules Package** - Refactored game logic into a pure, deterministic `@roguewar/rules` package.
-- **Phase 3: Serverless Authoritative Core** - Implemented a Node.js WebSocket server (`@roguewar/server`) that enforces rules and manages state deterministically.
+## 🏗️ Architecture
 
-## Monorepo Structure
+### Monorepo Structure
 
-- **`packages/rules`**: Pure TypeScript game logic (RNG, Dungeon Gen, Turn Resolution). No dependencies on browser or node (except dev/test).
-- **`packages/client`**: Vite-based frontend. Renders the game using HTML5 Canvas. Currently runs local single-player using the shared rules directly (will connect to server in Phase 4).
-- **`packages/server`**: Node.js WebSocket server. Acts as the authoritative match referee.
+- **`packages/rules`**: Pure TypeScript game logic (RNG, Dungeon Gen, Turn Resolution). No browser/node dependencies.
+- **`packages/authority`**: Authoritative game engine (`HostEngine`) that enforces rules and manages state deterministically
+- **`packages/ai`**: AI player implementations (ReactiveBot, etc.)
+- **`packages/client`**: Vite-based frontend with P2P networking, rendering, and input handling
 
-## Getting Started
+### P2P Architecture
+
+```
+┌─────────────┐           ┌─────────────┐
+│   Host      │◄─────────►│   Client    │
+│ (Browser)   │  PeerJS   │ (Browser)   │
+│             │           │             │
+│ HostEngine  │           │ ClientGame  │
+│  + Storage  │           │  Manager    │
+└─────────────┘           └─────────────┘
+       ▲                         ▲
+       │                         │
+       └─────────────┬───────────┘
+                     │
+              ┌──────▼───────┐
+              │  Spectator   │
+              │  (Browser)   │
+              └──────────────┘
+```
+
+The **Host** runs a full `HostEngine` (authoritative game state) in their browser and acts as the game server. **Clients** connect via PeerJS, send actions, and receive state updates. **Spectators** can watch in real-time and switch between player views.
+
+## 🚀 Getting Started
 
 ### Prerequisites
 
@@ -31,38 +58,126 @@ Install all dependencies from the root directory:
 npm install
 ```
 
-### Building
+### Running the Game
 
-The `rules` package must be built before the server can run (and often helps the client too):
-
-```bash
-npm run build -w @roguewar/rules
-```
-
-### Running the Project
-
-#### 1. Play the Client (Local Mode)
-To play the single-player version in your browser:
+Start the development server:
 
 ```bash
 npm run dev:client
 ```
+
 Then open [http://localhost:5173](http://localhost:5173).
 
-#### 2. Run the Authority Server
-To start the authoritative game server (headless):
+**For network access** (play on other devices on your LAN):
+- The server is now configured to expose on your network by default
+- Look for the "Network:" URLs in the terminal output
+- Use those URLs on other devices (phones, tablets, other computers)
+
+## 🎮 How to Play
+
+### Hosting a Game
+
+1. Click **"START HOSTING"**
+2. (Optional) Enter a custom game name
+3. Share the **Host ID** with other players
+4. Choose your character when prompted
+5. Your game auto-saves after every turn!
+
+### Joining a Game
+
+1. Enter the **Host ID** or **Game Name** in the "JOIN / SPECTATE" section
+2. Click **"JOIN"**
+3. Select an available character or spawn a new one
+4. Play!
+
+### Spectating a Game
+
+1. Enter the **Host ID** in the "JOIN / SPECTATE" section
+2. Click **"SPECTATE"**
+3. Watch the game in real-time
+4. Click player names in the left panel to switch camera views
+5. Press "Join Game" button to jump in as a player
+
+### Resuming a Saved Game
+
+1. Find your saved game in the **"SAVED GAMES / REPLAYS"** section
+2. Click **"RESUME"**
+3. Reclaim your previous character
+4. Continue where you left off!
+
+### Replaying a Game
+
+1. Click **"REPLAY"** on any saved game
+2. Use the timeline controls to scrub through turns
+3. Watch the game unfold turn-by-turn
+
+## 🎯 Game Controls
+
+- **Arrow Keys** / **WASD**: Move your character
+- **Space**: Skip turn / Wait
+- **Q**: Quit to lobby (with confirmation)
+- **💾 Save Game** (Host only): Manually save the current game state
+
+## 🔧 Development
+
+### Project Scripts
 
 ```bash
-npm start -w @roguewar/server
+# Start client dev server
+npm run dev:client
+
+# Build rules package
+npm run build -w @roguewar/rules
+
+# Build authority package  
+npm run build -w @roguewar/authority
+
+# Build all packages
+npm run build
 ```
-It listens on port `3000`.
 
-#### 3. Verify Server Logic
-To verify that the server is processing turns correctly, you can run the test script while the server is running:
+### Mod System
 
-```bash
-npx tsx scripts/test-server.ts
-```
+The game supports a modular content system via `ModRegistry`. Core content is defined in `@roguewar/rules/src/content/core.ts` and can be extended with custom mods.
 
-## Next Steps
-- **Phase 4**: Connect the Client to the Server for real multiplayer gameplay.
+## 🗺️ Roadmap
+
+- [x] **Phase 1**: Local Single Player
+- [x] **Phase 2**: Shared Rules Package
+- [x] **Phase 3**: Deterministic Authority Engine
+- [x] **Phase 4**: P2P Multiplayer via PeerJS
+- [x] **Phase 5**: Save/Load System & Replays
+- [x] **Phase 6**: Spectator Mode
+- [ ] **Phase 7**: Advanced AI opponents
+- [ ] **Phase 8**: Extended content & balancing
+- [ ] **Phase 9**: Polish & UX improvements
+
+## 📝 Technical Notes
+
+### Deterministic Game Logic
+
+All game logic in `@roguewar/rules` is **purely deterministic**. Given the same seed and sequence of actions, the game will always produce identical results. This enables:
+- Perfect replay accuracy
+- Easy testing and debugging
+- Trust-free P2P multiplayer (clients can verify host integrity)
+
+### Network Architecture
+
+- **PeerJS**: WebRTC-based P2P connections via a public STUN server
+- **Host ID**: Derived from game name (e.g., "My Game" → `roguewar-my-game`)
+- **Message Types**: `identity`, `spectate`, `action`, `welcome`, `delta`, `error`
+- **Auto-save**: Host automatically saves after every turn
+
+### Storage
+
+Games are stored in browser `localStorage` using IndexedDB-style key-value storage:
+- Key: `gameId` (UUID)
+- Value: Full `GameLog` (metadata + all turns + config)
+
+## 🤝 Contributing
+
+This is a personal project, but feedback and suggestions are welcome!
+
+## 📄 License
+
+MIT

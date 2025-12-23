@@ -1,7 +1,7 @@
 import { GameLog } from '@roguewar/rules';
 
 const DB_NAME = 'roguewar';
-const DB_VERSION = 2; // Bumped for keyPath change
+const DB_VERSION = 3; // Bumped for meta.gameId keyPath
 const STORE_NAME = 'games';
 
 export class GameStorage {
@@ -23,7 +23,7 @@ export class GameStorage {
                 if (db.objectStoreNames.contains(STORE_NAME)) {
                     db.deleteObjectStore(STORE_NAME);
                 }
-                db.createObjectStore(STORE_NAME, { keyPath: 'meta.saveId' });
+                db.createObjectStore(STORE_NAME, { keyPath: 'meta.gameId' });
             };
         });
     }

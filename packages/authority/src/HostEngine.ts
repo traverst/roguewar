@@ -39,7 +39,7 @@ export type AuthorityMessage = {
  * The 'broadcast' message goes to all peers (including the new one if desired).
  */
 export type ConnectResult = {
-    welcome: { type: 'welcome'; playerId: string; initialState: GameState; mods: ModManifest[] };
+    welcome: { type: 'welcome'; playerId: string; initialState: GameState; mods: ModManifest[]; connectedEntityIds: string[] };
     broadcast: { type: 'delta'; turn: number; events: GameEvent[]; action: Action };
 }
 
@@ -51,16 +51,17 @@ export class HostEngine {
     private state: GameState;
     private connectedPlayers: Map<string, string> = new Map(); // peerId -> userId (entityId)
     private aiPlayers: Map<string, AIPlayer> = new Map();
-    private isReplaying: boolean = false;
+    public isReplaying: boolean = false;
     private gameLog: GameLog;
     private registry: ModRegistry;
 
-    constructor(seed: number = Date.now(), config?: GameConfig, registry?: ModRegistry) {
-        console.log(`[HostEngine] Constructor: seed=${seed}, hasConfig=${!!config}, hasRegistry=${!!registry}`);
+    constructor(seed: number = Date.now(), config?: GameConfig, registry?: ModRegistry, gameName?: string) {
+        console.log(`[HostEngine] Constructor: seed=${seed}, hasConfig=${!!config}, hasRegistry=${!!registry}, name=${gameName}`);
         this.registry = registry || new ModRegistry();
         this.gameLog = {
             meta: {
                 gameId: `game-${Date.now()}`,
+                gameName: gameName || `Game ${new Date().toLocaleString()}`,
                 createdAt: Date.now(),
                 rulesVersion: '1.0.0',
                 lastSaved: Date.now()
@@ -108,9 +109,16 @@ export class HostEngine {
         };
     }
 
+    public getConnectedEntityIds(): string[] {
+        return Array.from(this.connectedPlayers.values());
+    }
+
     public connect(peerId: string, persistentId?: string): ConnectResult {
         const userId = persistentId || peerId;
+        console.log(`[HostEngine.connect] peerId=${peerId}, userId=${userId}`);
+        console.log(`[HostEngine.connect] BEFORE: connectedPlayers=`, Array.from(this.connectedPlayers.entries()));
         this.connectedPlayers.set(peerId, userId);
+        console.log(`[HostEngine.connect] AFTER: connectedPlayers=`, Array.from(this.connectedPlayers.entries()));
 
         // Process Join Action
         const joinAction: Action = { type: 'join', actorId: userId };
@@ -148,7 +156,8 @@ export class HostEngine {
                 type: 'welcome',
                 playerId: userId,
                 initialState: this.getState(),
-                mods: this.registry.getAllManifests()
+                mods: this.registry.getAllManifests(),
+                connectedEntityIds: Array.from(this.connectedPlayers.values())
             },
             broadcast: {
                 type: 'delta',
@@ -236,8 +245,31 @@ export class HostEngine {
         engine.isReplaying = false;
         engine.gameLog = JSON.parse(JSON.stringify(log));
 
+        // Clear connected players - the replay added them but they're not actually connected yet
+        engine.connectedPlayers.clear();
+        console.log(`[HostEngine] Cleared connectedPlayers after replay`);
+
         const hostEntity = engine.state.entities.find(e => !e.id.startsWith('ai-') && !e.id.startsWith('enemy_'));
         console.log(`[HostEngine] REPLAY SUCCESS. Final Turn: ${engine.state.turn}. Host Pos: ${hostEntity ? JSON.stringify(hostEntity.pos) : 'Unknown'}`);
+
+        return engine;
+    }
+
+    /**
+     * Create a HostEngine from a specific GameState and Config.
+     * Useful for resuming from a checkpoint (e.g. for replays or save-reclaims).
+     */
+    public static fromState(state: GameState, config: GameConfig, registry?: ModRegistry): HostEngine {
+        const engine = new HostEngine(config.dungeonSeed, config, registry);
+        engine.state = JSON.parse(JSON.stringify(state));
+
+        // Re-initialize AI players based on entities present in the state
+        engine.aiPlayers.clear();
+        engine.state.entities.forEach(entity => {
+            if (entity.id.startsWith('ai-') || entity.id.startsWith('enemy_')) {
+                engine.aiPlayers.set(entity.id, new ReactiveBot(entity.id));
+            }
+        });
 
         return engine;
     }

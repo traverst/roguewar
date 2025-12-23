@@ -30,14 +30,23 @@ export class CanvasRenderer {
             centerEntity = state.entities.find(e => e.type === EntityType.Player);
         }
 
-        if (!centerEntity) return;
-
         // Camera offset
         const centerX = this.width / 2;
         const centerY = this.height / 2;
 
-        const offsetX = centerX - centerEntity.pos.x * TILE_SIZE - TILE_SIZE / 2;
-        const offsetY = centerY - centerEntity.pos.y * TILE_SIZE - TILE_SIZE / 2;
+        let offsetX = centerX;
+        let offsetY = centerY;
+
+        if (centerEntity) {
+            offsetX -= centerEntity.pos.x * TILE_SIZE + TILE_SIZE / 2;
+            offsetY -= centerEntity.pos.y * TILE_SIZE + TILE_SIZE / 2;
+        } else if (state.dungeon.length > 0) {
+            // Fallback: Center on dungeon map center
+            const mapH = state.dungeon.length;
+            const mapW = state.dungeon[0].length;
+            offsetX -= (mapW * TILE_SIZE) / 2;
+            offsetY -= (mapH * TILE_SIZE) / 2;
+        }
 
         this.ctx.save();
         this.ctx.translate(offsetX, offsetY);
