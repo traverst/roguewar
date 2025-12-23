@@ -11,6 +11,11 @@ import { ReplayControls } from './replay/ReplayControls';
 import { HostEngine } from '@roguewar/authority';
 import { CORE_CONTENT, GameLog, GameState, EntityType } from '@roguewar/rules';
 import { ModLoader } from './mods/ModLoader';
+import { MetaGameContext } from './meta/MetaGameContext';
+import { campaignManager } from './meta';
+import { ProfileUI } from './ui/ProfileUI';
+import { CampaignMapUI } from './ui/CampaignMapUI';
+import { UnlockNotification } from './ui/UnlockNotification';
 
 declare global {
   interface Window { isJoinRequested: boolean; triggerJoinUI: () => void; }
@@ -26,6 +31,11 @@ async function init() {
   await storage.init();
 
   const registry = await ModLoader.loadPacks([CORE_CONTENT]);
+
+  // Initialize meta-game system
+  const metaGame = new MetaGameContext();
+  await metaGame.init();
+  console.log('[Main] Meta-game initialized');
 
   // User Identity Logic
   let playerName = localStorage.getItem('rw_player_name') || `Player-${Math.floor(Math.random() * 1000)}`;
@@ -48,10 +58,23 @@ async function init() {
 
   async function showLobby() {
     const games = await storage.listGames();
+    const profile = metaGame.getProfile();
 
     app.innerHTML = `
             <div id="lobby-ui" style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; min-height: 100%; font-family: 'Inter', sans-serif; background: #121212; color: #eee; padding: 2rem; box-sizing: border-box; overflow-y: auto;">
                 <h1 style="font-size: 3rem; margin-bottom: 2rem; background: linear-gradient(135deg, #fff 0%, #888 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ROGUEWAR P2P</h1>
+                
+                <!-- META-GAME HEADER -->
+                <div style="background: #1e1e1e; padding: 1rem; border-radius: 8px; border: 1px solid #46a; margin-bottom: 2rem; width: 100%; max-width: 600px; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="font-size: 0.9rem; color: #888;">Welcome back,</div>
+                        <div style="font-size: 1.3rem; font-weight: bold; color: #46a;">${profile.displayName}</div>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button id="btn-view-profile" style="padding: 0.6rem 1rem; background: #2a2a3a; color: #8af; border: 1px solid #46a; cursor: pointer; border-radius: 4px;">📊 Profile</button>
+                        <button id="btn-campaigns" style="padding: 0.6rem 1rem; background: #2a3a2a; color: #4f6; border: 1px solid #4a6; cursor: pointer; border-radius: 4px;">🗺️ Campaigns</button>
+                    </div>
+                </div>
                 
                 <!-- USER PROFILE -->
                 <div style="background: #1e1e1e; padding: 1.5rem; border-radius: 8px; border: 1px solid #333; margin-bottom: 2rem; width: 100%; max-width: 600px;">
@@ -145,9 +168,57 @@ async function init() {
       alert("Name saved!");
     };
 
+    // Meta-game buttons
+    (app.querySelector('#btn-view-profile') as HTMLElement).onclick = () => {
+      ProfileUI.show(profile, app, showLobby);
+    };
+
+    (app.querySelector('#btn-campaigns') as HTMLElement).onclick = () => {
+      const campaigns = campaignManager.getAllCampaigns();
+      if (campaigns.length === 0) {
+        alert('No campaigns available yet!');
+        return;
+      }
+      // Show first campaign (tutorial for now)
+      const campaign = campaigns[0];
+
+      // Initialize campaign progress if needed
+      if (!profile.campaignProgress[campaign.id]) {
+        profile.campaignProgress[campaign.id] = campaignManager.initializeCampaignProgress(campaign.id);
+        metaGame.saveProfile();
+      }
+
+      CampaignMapUI.show(campaign, profile, app, (nodeId) => {
+        // Start campaign node
+        const node = campaignManager.getNode(campaign.id, nodeId);
+        if (!node) return;
+
+        // Merge node config with defaults
+        const config = {
+          ...node.dungeonConfig,
+          rngSeed: node.dungeonConfig.rngSeed || Date.now(),
+          dungeonSeed: node.dungeonConfig.dungeonSeed || Date.now(),
+          players: []
+        };
+
+        // Create a special engine for this campaign node
+        const engine = new HostEngine(config.dungeonSeed, config, registry);
+
+        // Store campaign context for run completion
+        (window as any).currentCampaignContext = {
+          campaignId: campaign.id,
+          nodeId: nodeId
+        };
+
+        startGame(true, undefined, playerName, engine, `${campaign.name}: ${node.name}`);
+      }, showLobby);
+    };
+
 
     (app.querySelector('#btn-host') as HTMLElement).onclick = () => {
       const gameName = app.querySelector<HTMLInputElement>('#input-game-name')!.value;
+      // Clear campaign context for freeplay
+      (window as any).currentCampaignContext = null;
       startGame(true, undefined, playerName, undefined, gameName);
     };
 
