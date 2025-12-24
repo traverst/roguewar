@@ -16,7 +16,7 @@ export class DungeonGenerator {
         this.rng = rng;
     }
 
-    generate(levelInfo?: { isEntrance?: boolean; isFinal?: boolean }): {
+    generate(levelInfo?: { isEntrance?: boolean; isFinal?: boolean }, roomConfig?: { maxRooms?: number; minSize?: number; maxSize?: number }): {
         tiles: Tile[][];
         spawn: Position;
         enemies: Position[];
@@ -33,9 +33,9 @@ export class DungeonGenerator {
             this.tiles.push(row);
         }
 
-        const maxRooms = 15;
-        const minSize = 4;
-        const maxSize = 10;
+        const maxRooms = roomConfig?.maxRooms ?? 15;
+        const minSize = roomConfig?.minSize ?? 4;
+        const maxSize = roomConfig?.maxSize ?? 10;
 
         for (let i = 0; i < maxRooms; i++) {
             const w = randomInt(this.rng, minSize, maxSize);
