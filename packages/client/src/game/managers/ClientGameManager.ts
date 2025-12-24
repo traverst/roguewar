@@ -17,6 +17,7 @@ export class ClientGameManager {
 
     public connectedEntityIds: string[] = [];
     public onGameStateChanged: ((state: GameState, connectedIds: string[]) => void) | null = null;
+    public onGameEnd: ((outcome: 'victory' | 'defeat') => void) | null = null;
 
     constructor(renderer: CanvasRenderer, input: InputManager, transport: Transport, registry: ModRegistry | null = null) {
         this.renderer = renderer;
@@ -111,8 +112,32 @@ export class ClientGameManager {
             console.log(`[Client] Delta is valid but not my action. waiting=${this.isWaitingForServer}`);
         }
 
-        if (msg.events.length > 0) {
-            // console.log("Delta Events:", msg.events);
+        // Check for victory/defeat events
+        if (msg.events && msg.events.length > 0) {
+            const hasVictory = msg.events.some(e => e.type === 'victory');
+            const hasDefeat = msg.events.some(e => e.type === 'defeat');
+
+            if (hasVictory) {
+                console.log('[Client] 🎉 VICTORY DETECTED!');
+                if (this.onGameEnd) {
+                    this.onGameEnd('victory');
+                } else {
+                    setTimeout(() => {
+                        alert('🎉 VICTORY! You reached the exit and completed the dungeon!');
+                        window.location.reload();
+                    }, 300);
+                }
+            } else if (hasDefeat) {
+                console.log('[Client] ☠️ DEFEAT DETECTED!');
+                if (this.onGameEnd) {
+                    this.onGameEnd('defeat');
+                } else {
+                    setTimeout(() => {
+                        alert('☠️ DEFEAT! All heroes have fallen.');
+                        window.location.reload();
+                    }, 300);
+                }
+            }
         }
     }
 

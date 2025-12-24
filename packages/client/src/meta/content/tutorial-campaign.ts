@@ -1,8 +1,8 @@
 import { Campaign } from '../types';
 
 /**
- * Tutorial Campaign - First Steps
- * A 3-node linear campaign teaching basic mechanics
+ * Tutorial Campaign - First Steps  
+ * Multi-level dungeons (3, 5, 7 levels progressively)
  */
 export const tutorialCampaign: Campaign = {
     id: 'campaign:tutorial',
@@ -17,9 +17,10 @@ export const tutorialCampaign: Campaign = {
             dungeonConfig: {
                 dungeonSeed: 1000,
                 rngSeed: 1000,
+                maxLevels: 3,  // 3 level dungeon
                 players: []
             },
-            unlocksOnComplete: [],
+            unlocksOnComplete: ['hero:warrior'],
             nextNodes: ['node:tutorial-2'],
             requiredNodes: []
         },
@@ -30,9 +31,10 @@ export const tutorialCampaign: Campaign = {
             dungeonConfig: {
                 dungeonSeed: 1001,
                 rngSeed: 1001,
+                maxLevels: 5,  // 5 level dungeon
                 players: []
             },
-            unlocksOnComplete: [],
+            unlocksOnComplete: ['hero:scout'],
             nextNodes: ['node:tutorial-3'],
             requiredNodes: ['node:tutorial-1']
         },
@@ -43,9 +45,10 @@ export const tutorialCampaign: Campaign = {
             dungeonConfig: {
                 dungeonSeed: 1002,
                 rngSeed: 1002,
+                maxLevels: 7,  // 7 level dungeon
                 players: []
             },
-            unlocksOnComplete: ['hero:warrior'], // Unlock warrior hero
+            unlocksOnComplete: ['theme:ice-caves'],
             nextNodes: [],
             requiredNodes: ['node:tutorial-2']
         }

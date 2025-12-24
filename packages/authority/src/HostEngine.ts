@@ -13,7 +13,10 @@ import {
     TurnRecord,
     advanceTurn,
     ModRegistry,
-    ModManifest
+    ModManifest,
+    generateMultiLevelDungeon,
+    MultiLevelDungeon,
+    handleStairsAction
 } from '@roguewar/rules';
 import { ReactiveBot, createPerception, AIPlayer } from '@roguewar/ai';
 
@@ -54,8 +57,9 @@ export class HostEngine {
     public isReplaying: boolean = false;
     private gameLog: GameLog;
     private registry: ModRegistry;
+    private multiLevelDungeon?: MultiLevelDungeon; // Store multi-level dungeon structure
 
-    constructor(seed: number = Date.now(), config?: GameConfig, registry?: ModRegistry, gameName?: string) {
+    constructor(seed: number = Date.now(), config?: GameConfig, registry?: ModRegistry, gameName?: string, campaignContext?: { campaignId: string; nodeId: string }) {
         console.log(`[HostEngine] Constructor: seed=${seed}, hasConfig=${!!config}, hasRegistry=${!!registry}, name=${gameName}`);
         this.registry = registry || new ModRegistry();
         this.gameLog = {
@@ -64,7 +68,8 @@ export class HostEngine {
                 gameName: gameName || `Game ${new Date().toLocaleString()}`,
                 createdAt: Date.now(),
                 rulesVersion: '1.0.0',
-                lastSaved: Date.now()
+                lastSaved: Date.now(),
+                ...(campaignContext && { campaignId: campaignContext.campaignId, nodeId: campaignContext.nodeId })
             },
             config: config || {
                 dungeonSeed: seed,
@@ -86,14 +91,104 @@ export class HostEngine {
     }
 
     private createInitialState(seed: number): GameState {
-        const rng = mulberry32(seed);
-        const gen = new DungeonGenerator(50, 50, rng);
-        const { tiles, spawn, enemies } = gen.generate();
+        // Check if multi-level config is specified
+        const maxLevels = (this.gameLog.config as any).maxLevels || 1;
+
+        if (maxLevels > 1) {
+            // Multi-level dungeon
+            console.log(`[HostEngine] Generating multi-level dungeon: ${maxLevels} levels`);
+            this.multiLevelDungeon = generateMultiLevelDungeon(seed, maxLevels, 50, 50);
+            const firstLevel = this.multiLevelDungeon.levels[0];
+
+            console.log(`[HostEngine] First level dimensions: ${firstLevel.length}x${firstLevel[0]?.length}`);
+
+            // Get spawn from first room
+            const spawn = this.findFloorTile(firstLevel);
+            const enemies: Position[] = [];
+
+            // Place 5 enemies on first level
+            const enemyCount = 5;
+            for (let i = 0; i < enemyCount; i++) {
+                const enemyPos = this.findFloorTile(firstLevel, [spawn, ...enemies]);
+                if (enemyPos) enemies.push(enemyPos);
+            }
+
+            const entityList: Entity[] = [];
+            enemies.forEach((pos: Position, idx: number) => {
+                const id = `enemy_${idx}`;
+                const enemy = this.registry.createEntity('core:goblin', id, pos);
+                if (enemy) {
+                    entityList.push(enemy);
+                    this.aiPlayers.set(id, new ReactiveBot(id));
+                }
+            });
+
+            console.log(`[HostEngine] Multi-level state created: ${entityList.length} enemies, spawn at (${spawn.x}, ${spawn.y})`);
+
+            return {
+                dungeon: firstLevel,
+                entities: entityList,
+                turn: 0,
+                seed,
+                currentLevel: 0,
+                maxLevels: maxLevels,
+                victoryAchieved: false,
+                levelEnemies: { 0: entityList } // Initialize with first level enemies
+            };
+        } else {
+            // Single-level dungeon (backward compatible)
+            const rng = mulberry32(seed);
+            const gen = new DungeonGenerator(50, 50, rng);
+            const { tiles, spawn, enemies } = gen.generate();
+
+            const entityList: Entity[] = [];
+            enemies.forEach((pos: Position, idx: number) => {
+                const id = `enemy_${idx}`;
+                const enemy = this.registry.createEntity('core:goblin', id, pos);
+                if (enemy) {
+                    entityList.push(enemy);
+                    this.aiPlayers.set(id, new ReactiveBot(id));
+                }
+            });
+
+            return {
+                dungeon: tiles,
+                entities: entityList,
+                turn: 0,
+                seed,
+                currentLevel: 0,
+                maxLevels: 1,
+                victoryAchieved: false
+            };
+        }
+    }
+
+    private findFloorTile(dungeon: GameState['dungeon'], exclude: Position[] = []): Position {
+        for (let y = 0; y < dungeon.length; y++) {
+            for (let x = 0; x < dungeon[y].length; x++) {
+                if (dungeon[y][x].type === 'floor') {
+                    const isExcluded = exclude.some(p => p.x === x && p.y === y);
+                    if (!isExcluded) {
+                        return { x, y };
+                    }
+                }
+            }
+        }
+        return { x: 1, y: 1 }; // Fallback
+    }
+
+    private spawnEnemiesForLevel(level: number, dungeon: GameState['dungeon']): Entity[] {
+        const enemies: Position[] = [];
+        const enemyCount = 3 + level; // More enemies on deeper levels
+
+        for (let i = 0; i < enemyCount; i++) {
+            const enemyPos = this.findFloorTile(dungeon, enemies);
+            if (enemyPos) enemies.push(enemyPos);
+        }
 
         const entityList: Entity[] = [];
         enemies.forEach((pos: Position, idx: number) => {
-            const id = `enemy_${idx}`;
-            // Use core goblin template by default
+            const id = `enemy_L${level}_${idx}`;
             const enemy = this.registry.createEntity('core:goblin', id, pos);
             if (enemy) {
                 entityList.push(enemy);
@@ -101,12 +196,7 @@ export class HostEngine {
             }
         });
 
-        return {
-            dungeon: tiles,
-            entities: entityList,
-            turn: 1,
-            seed: Math.floor(rng() * 4294967296)
-        };
+        return entityList;
     }
 
     public getConnectedEntityIds(): string[] {
@@ -191,8 +281,62 @@ export class HostEngine {
             return result.broadcast;
         }
 
-        const { nextState, events } = resolveTurn(this.state, action, this.registry);
+        // Process action
+        let events: GameEvent[] = [];
+        let nextState = this.state;
+
+        // Normal action resolution
+        const result = resolveTurn(this.state, action, this.registry);
+        nextState = result.nextState;
+        events = result.events;
         this.state = nextState;
+
+        // Check if actor is now on stairs/exit and auto-trigger
+        const actor = this.state.entities.find(e => e.id === action.actorId);
+        if (actor && this.multiLevelDungeon && this.state.maxLevels > 1) {
+            const tile = this.state.dungeon[actor.pos.y]?.[actor.pos.x];
+
+            // Auto-use stairs
+            if (tile?.type === 'stairs_down' || tile?.type === 'stairs_up') {
+                const stairsResult = handleStairsAction(
+                    this.state,
+                    action.actorId,
+                    this.multiLevelDungeon,
+                    (level, dungeon) => this.spawnEnemiesForLevel(level, dungeon)
+                );
+                this.state = stairsResult.nextState;
+                events.push(...stairsResult.events);
+            }
+        }
+
+        // Check victory condition (player reached exit)
+        if (actor && !this.state.victoryAchieved) {
+            const tile = this.state.dungeon[actor.pos.y]?.[actor.pos.x];
+            console.log(`[HostEngine] Actor ${actor.id} at (${actor.pos.x}, ${actor.pos.y}), tile type: ${tile?.type}`);
+            if (tile?.type === 'exit') {
+                console.log(`[HostEngine] VICTORY DETECTED! ${actor.id} reached the exit!`);
+                this.state.victoryAchieved = true;
+                events.push({
+                    type: 'victory',
+                    entityId: actor.id,
+                    message: `${actor.id} has reached the exit!`
+                });
+                console.log(`[HostEngine] Victory event pushed, total events: ${events.length}`);
+            }
+        }
+
+        // Check defeat condition (all human players dead)
+        const humanPlayers = this.state.entities.filter(e =>
+            e.type === EntityType.Player && !e.id.startsWith('ai-') && !e.id.startsWith('enemy_')
+        );
+        const allDead = humanPlayers.length > 0 && humanPlayers.every(p => p.hp <= 0);
+
+        if (allDead && !this.state.victoryAchieved) {
+            events.push({
+                type: 'defeat',
+                message: 'All heroes have fallen!'
+            });
+        }
 
         // AFTER human action, query AI for their actions
         this.processAIActions();

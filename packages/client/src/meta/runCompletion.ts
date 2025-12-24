@@ -1,8 +1,8 @@
 import { GameLog } from '@roguewar/rules';
-import { MetaGameContext } from './meta/MetaGameContext';
-import { RunSummary } from './meta/types';
-import { achievementManager, unlockRegistry, campaignManager } from './meta';
-import { UnlockNotification } from './ui/UnlockNotification';
+import { MetaGameContext } from './MetaGameContext';
+import { RunSummary } from './types';
+import { achievementManager, unlockRegistry, campaignManager } from './index';
+import { UnlockNotification } from '../ui/UnlockNotification';
 
 /**
  * Process run completion and update meta-game state
@@ -15,15 +15,31 @@ export async function processRunCompletion(
 ): Promise<void> {
     const profile = metaGame.getProfile();
 
+    // Detect outcome from game log events
+    let outcome: 'victory' | 'defeat' | 'abandoned' = 'abandoned';
+
+    // Check last few turns for victory/defeat events
+    for (let i = gameLog.turns.length - 1; i >= Math.max(0, gameLog.turns.length - 5); i--) {
+        const turn = gameLog.turns[i];
+        if (turn.events.some(e => e.type === 'victory')) {
+            outcome = 'victory';
+            break;
+        }
+        if (turn.events.some(e => e.type === 'defeat')) {
+            outcome = 'defeat';
+            break;
+        }
+    }
+
     // Create run summary from GameLog
     const runSummary: RunSummary = {
         gameId: gameLog.meta.gameId,
         campaignId: campaignContext?.campaignId,
         nodeId: campaignContext?.nodeId,
-        outcome: 'abandoned', // TODO: Detect victory/defeat from final game state
+        outcome,
         turns: gameLog.turns.length,
         timestamp: Date.now(),
-        charactersPlayed: [] // TODO: Extract from game log
+        charactersPlayed: []
     };
 
     // Add to completed runs
@@ -37,7 +53,7 @@ export async function processRunCompletion(
 
     // Campaign completion
     if (campaignContext && runSummary.outcome === 'victory') {
-        const result = campaignManager.completeNode(
+        campaignManager.completeNode(
             profile,
             campaignContext.campaignId,
             campaignContext.nodeId

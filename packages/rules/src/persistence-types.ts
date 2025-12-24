@@ -6,6 +6,7 @@ export interface GameConfig {
     rngSeed: number;
     players: PlayerConfig[];
     mods?: ModManifest[];
+    maxLevels?: number;  // Number of dungeon levels (1 = single level)
 }
 
 export interface PlayerConfig {

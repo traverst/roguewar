@@ -16,6 +16,7 @@ import { campaignManager } from './meta';
 import { ProfileUI } from './ui/ProfileUI';
 import { CampaignMapUI } from './ui/CampaignMapUI';
 import { UnlockNotification } from './ui/UnlockNotification';
+import { processRunCompletion } from './meta/runCompletion';
 
 declare global {
   interface Window { isJoinRequested: boolean; triggerJoinUI: () => void; }
@@ -42,7 +43,8 @@ async function init() {
 
   function deriveHostId(name: string): string {
     const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    return `roguewar-${slug}`;
+    const randomSuffix = Math.random().toString(36).substring(2, 6);
+    return `roguewar-${slug}-${randomSuffix}`;
   }
 
   function resolveTargetId(input: string): string {
@@ -201,16 +203,15 @@ async function init() {
           players: []
         };
 
-        // Create a special engine for this campaign node
-        const engine = new HostEngine(config.dungeonSeed, config, registry);
-
-        // Store campaign context for run completion
-        (window as any).currentCampaignContext = {
+        // Create a special engine for this campaign node with campaign context
+        const campaignContext = {
           campaignId: campaign.id,
           nodeId: nodeId
         };
+        const engine = new HostEngine(config.dungeonSeed, config, registry, `${campaign.name}: ${node.name}`, campaignContext);
 
         startGame(true, undefined, playerName, engine, `${campaign.name}: ${node.name}`);
+
       }, showLobby);
     };
 
@@ -553,6 +554,46 @@ async function init() {
     // Expose for debugging
     (window as any).manager = manager;
 
+    // Handle game end (victory/defeat)
+    manager.onGameEnd = async (outcome) => {
+      console.log(`[Main] Game ended with outcome: ${outcome}`);
+
+      // Get the game log from host
+      const gameLog = isHost
+        ? (transport as HostTransport).engine.getGameLog()
+        : null;
+
+      if (gameLog) {
+        // Save the game log
+        await storage.saveGame(gameLog);
+        console.log('[Main] Game log saved');
+
+        // Extract campaign context from game log meta
+        const campaignContext = (gameLog.meta as any).campaignId ? {
+          campaignId: (gameLog.meta as any).campaignId,
+          nodeId: (gameLog.meta as any).nodeId
+        } : undefined;
+
+        // Process run completion for meta-game
+        try {
+          await processRunCompletion(gameLog, metaGame, campaignContext);
+          console.log('[Main] Run completion processed');
+        } catch (error) {
+          console.error('[Main] Error processing run completion:', error);
+        }
+      }
+
+      // Show victory/defeat message
+      setTimeout(() => {
+        if (outcome === 'victory') {
+          alert('🎉 VICTORY! You reached the exit and completed the dungeon!\n\nReturning to lobby...');
+        } else {
+          alert('☠️ DEFEAT! All heroes have fallen.\n\nReturning to lobby...');
+        }
+        window.location.reload();
+      }, 300);
+    };
+
     function loop() {
       manager.update();
       requestAnimationFrame(loop);
@@ -586,8 +627,6 @@ async function init() {
         createHUD("Client", connectToId, persistentId || generatedId);
       } catch (e) {
         console.error("Connection Failed", e);
-        alert("Connection failed: " + e);
-        window.location.reload();
       }
     }
   }
@@ -597,24 +636,39 @@ async function init() {
     hud.id = 'game-hud';
     hud.style.cssText = "position: absolute; top: 10px; left: 10px; background: rgba(0, 0, 0, 0.7); color: #fff; padding: 10px; border-radius: 8px; font-family: 'Inter', sans-serif; pointer-events: auto; z-index: 1000;";
 
-    let content = `<div><strong>Role:</strong> ${role}</div>`;
-    if (userId) content += `<div><strong>Identity:</strong> ${userId}</div>`;
+    let content = '<div><strong>Role:</strong> ' + role + '</div>';
+    if (userId) content += '<div><strong>Identity:</strong> ' + userId + '</div>';
     if (hostId) {
-      content += `<div style="margin-top: 5px;"><strong>Host ID:</strong> <span id="hud-host-id" style="font-family: monospace; background: #333; padding: 2px 5px; border-radius: 4px; select-all: auto;">${hostId}</span> <button id="btn-copy-host" style="cursor: pointer; font-size: 0.8rem;">📋</button></div>`;
+      content += '<div style="margin-top: 5px;"><strong>Host ID:</strong> <span id="hud-host-id" style="font-family: monospace; background: #333; padding: 2px 5px; border-radius: 4px;">' + hostId + '</span> <button id="btn-copy-host" style="cursor: pointer; font-size: 0.8rem;">📋</button></div>';
     }
 
+    // Level indicator
+    content += '<div style="margin-top: 5px;"><strong>Level:</strong> <span id="level-indicator">1/1</span></div>';
+
     if (role === 'Spectator') {
-      content += `<button id="btn-join-game" style="margin-top: 10px; padding: 5px 10px; background: #3a3a4a; border: 1px solid #46a; color: white; border-radius: 4px; cursor: pointer; width: 100%;">Join Game</button>`;
+      content += '<button id="btn-join-game" style="margin-top: 10px; padding: 5px 10px; background: #3a3a4a; border: 1px solid #46a; color: white; border-radius: 4px; cursor: pointer; width: 100%;">Join Game</button>';
     }
 
     if (role === 'Host') {
-      content += `<button id="btn-save-game" style="margin-top: 10px; padding: 5px 10px; background: #2a3a2a; color: #4f6; border: 1px solid #4f6; border-radius: 4px; cursor: pointer; width: 100%;">💾 Save Game</button>`;
+      content += '<button id="btn-save-game" style="margin-top: 10px; padding: 5px 10px; background: #2a3a2a; color: #4f6; border: 1px solid #4f6; border-radius: 4px; cursor: pointer; width: 100%;">💾 Save Game</button>';
     }
 
-    content += `<button id="btn-quit" style="margin-top: 10px; padding: 5px 10px; background: #a33; border: none; color: white; border-radius: 4px; cursor: pointer; width: 100%;">Quit to Lobby</button>`;
+    content += '<button id="btn-quit" style="margin-top: 10px; padding: 5px 10px; background: #a33; border: none; color: white; border-radius: 4px; cursor: pointer; width: 100%;">Quit to Lobby</button>';
+    content += '<div style="margin-top: 10px; font-size: 0.75rem; color: #888; border-top: 1px solid #444; padding-top: 5px;">WASD: Move | Space: Wait<br/>. or &gt;: Stairs | Q: Quit</div>';
 
     hud.innerHTML = content;
     app.appendChild(hud);
+
+    // Update level indicator
+    setInterval(() => {
+      const state = (window as any).manager?.state;
+      if (state && state.currentLevel !== undefined && state.maxLevels) {
+        const levelIndicator = document.getElementById('level-indicator');
+        if (levelIndicator) {
+          levelIndicator.textContent = (state.currentLevel + 1) + '/' + state.maxLevels;
+        }
+      }
+    }, 100);
 
     // Events
     if (hostId) {
@@ -637,11 +691,9 @@ async function init() {
     }
 
     (hud.querySelector('#btn-quit') as HTMLElement).onclick = () => {
-      // Hard reload to ensure clean state for now
       window.location.reload();
     };
   }
-
 }
 
 init().catch(e => console.error("[Main] Error:", e));

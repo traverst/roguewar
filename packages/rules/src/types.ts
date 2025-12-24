@@ -7,7 +7,7 @@ export enum Direction {
     West = 3
 }
 
-export type TileType = 'floor' | 'wall';
+export type TileType = 'floor' | 'wall' | 'stairs_down' | 'stairs_up' | 'exit';
 
 export interface Tile {
     type: TileType;
@@ -32,13 +32,13 @@ export interface Entity {
 
 export interface GameState {
     dungeon: Tile[][];
-    entities: Entity[]; // Array for now, map later if strict? Plan said Record<string, Entity>, let's stick to array for Phase 2 strictness if possible, but let's match Phase 1 for now to easy refactor, then tighten?
-    // Phase 2 Req: "entities: Record<EntityId, Entity>"
-    // Okay, I will follow the Phase 2 Plan Strictness.
-    // Wait, if I change to Record, I break the client heavily. Plan said "Refactor Client". So I should do it.
-    // Let's stick to the Plan's types.
+    entities: Entity[];
     turn: number;
     seed: number;
+    currentLevel: number;      // Track which dungeon level (0-indexed)
+    maxLevels: number;         // Total levels in this dungeon
+    victoryAchieved?: boolean; // Victory flag when exit reached
+    levelEnemies?: { [level: number]: Entity[] }; // Store enemies per level for persistence
 }
 
 // Plan Types:
@@ -50,14 +50,14 @@ export type GameStateStrict = {
 }
 
 // Events
-export type GameEventType = 'moved' | 'attacked' | 'killed' | 'wait' | 'spawned';
+export type GameEventType = 'moved' | 'attacked' | 'killed' | 'wait' | 'spawned' | 'victory' | 'defeat' | 'level_transition';
 
 export interface GameEvent {
     type: GameEventType;
     [key: string]: any;
 }
 
-export type ActionType = 'move' | 'attack' | 'wait' | 'join';
+export type ActionType = 'move' | 'attack' | 'wait' | 'join' | 'use_stairs';
 
 export interface Action {
     type: ActionType;

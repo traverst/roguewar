@@ -4,6 +4,9 @@ const COLOR_FLOOR = '#222';
 const COLOR_WALL = '#555';
 const COLOR_PLAYER = '#0f0';
 const COLOR_ENEMY = '#ff8800'; // Orange for non-AI enemies
+const COLOR_STAIRS_DOWN = '#44a'; // Blue for down stairs
+const COLOR_STAIRS_UP = '#a44'; // Red for up stairs
+const COLOR_EXIT = '#ff0'; // Yellow for exit
 
 export class CanvasRenderer {
     ctx: CanvasRenderingContext2D;
@@ -58,8 +61,29 @@ export class CanvasRenderer {
                     this.ctx.fillStyle = COLOR_FLOOR;
                 } else if (tile.type === 'wall') {
                     this.ctx.fillStyle = COLOR_WALL;
+                } else if (tile.type === 'stairs_down') {
+                    this.ctx.fillStyle = COLOR_STAIRS_DOWN;
+                } else if (tile.type === 'stairs_up') {
+                    this.ctx.fillStyle = COLOR_STAIRS_UP;
+                } else if (tile.type === 'exit') {
+                    this.ctx.fillStyle = COLOR_EXIT;
                 }
                 this.ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+
+                // Draw symbols for special tiles
+                if (tile.type === 'stairs_down') {
+                    this.ctx.fillStyle = '#fff';
+                    this.ctx.font = 'bold 16px monospace';
+                    this.ctx.fillText('▼', x * TILE_SIZE + 6, y * TILE_SIZE + 18);
+                } else if (tile.type === 'stairs_up') {
+                    this.ctx.fillStyle = '#fff';
+                    this.ctx.font = 'bold 16px monospace';
+                    this.ctx.fillText('▲', x * TILE_SIZE + 6, y * TILE_SIZE + 18);
+                } else if (tile.type === 'exit') {
+                    this.ctx.fillStyle = '#000';
+                    this.ctx.font = 'bold 20px monospace';
+                    this.ctx.fillText('✦', x * TILE_SIZE + 4, y * TILE_SIZE + 20);
+                }
             });
         });
 

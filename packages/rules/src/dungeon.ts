@@ -16,7 +16,14 @@ export class DungeonGenerator {
         this.rng = rng;
     }
 
-    generate(): { tiles: Tile[][]; spawn: Position; enemies: Position[] } {
+    generate(levelInfo?: { isEntrance?: boolean; isFinal?: boolean }): {
+        tiles: Tile[][];
+        spawn: Position;
+        enemies: Position[];
+        stairsDown?: Position;
+        stairsUp?: Position;
+        exit?: Position;
+    } {
         // Initialize with walls
         for (let y = 0; y < this.height; y++) {
             const row: Tile[] = [];
@@ -69,7 +76,45 @@ export class DungeonGenerator {
         const spawn = this.rooms[0].center();
         const enemies = this.rooms.slice(1).map(r => r.center());
 
-        return { tiles: this.tiles, spawn, enemies };
+        // Place stairs/exit based on level type
+        let stairsDown: Position | undefined;
+        let stairsUp: Position | undefined;
+        let exit: Position | undefined;
+
+        if (levelInfo?.isFinal) {
+            // Final level: stairs up at start, exit at end
+            const exitRoom = this.rooms[this.rooms.length - 1];
+            exit = exitRoom.center();
+            this.tiles[exit.y][exit.x].type = 'exit';
+
+            if (this.rooms.length > 1) {
+                stairsUp = this.rooms[0].center();
+                this.tiles[stairsUp.y][stairsUp.x].type = 'stairs_up';
+            }
+        } else if (levelInfo?.isEntrance) {
+            // Entrance level: No stairs up, stairs down at end
+            const downRoom = this.rooms[this.rooms.length - 1];
+            stairsDown = downRoom.center();
+            this.tiles[stairsDown.y][stairsDown.x].type = 'stairs_down';
+        } else {
+            // Middle level: stairs up at start, stairs down at end
+            if (this.rooms.length > 1) {
+                stairsUp = this.rooms[0].center();
+                this.tiles[stairsUp.y][stairsUp.x].type = 'stairs_up';
+
+                stairsDown = this.rooms[this.rooms.length - 1].center();
+                this.tiles[stairsDown.y][stairsDown.x].type = 'stairs_down';
+            }
+        }
+
+        return {
+            tiles: this.tiles,
+            spawn,
+            enemies,
+            stairsDown,
+            stairsUp,
+            exit
+        };
     }
 
     createRoom(room: Room) {
