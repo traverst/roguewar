@@ -56,6 +56,136 @@ async function init() {
     return deriveHostId(input);
   }
 
+  // Get levels from ContentLibrary (shared localStorage with tools)
+  // Check both 'level' and 'dungeon' types since levels may be saved as either
+  function getContentLibraryLevels(): { id: string; name: string; data: any; type: string }[] {
+    try {
+      const libraryJson = localStorage.getItem('roguewar_content_library');
+      console.log('[Main] Content library raw:', libraryJson ? 'exists' : 'null');
+      if (!libraryJson) return [];
+
+      const library = JSON.parse(libraryJson);
+      console.log('[Main] Content library items:', library.length, 'types:', library.map((i: any) => i.type).join(', '));
+
+      // Get both levels and dungeons (dungeons from Dungeon Editor may also be playable)
+      return library
+        .filter((item: any) => item.type === 'level' || item.type === 'dungeon')
+        .map((item: any) => ({ id: item.id, name: item.name, data: item.data, type: item.type }))
+        .sort((a: any, b: any) => a.name.localeCompare(b.name));
+    } catch (e) {
+      console.error('[Main] Error loading content library:', e);
+      return [];
+    }
+  }
+
+  // Populate the Quick Play level list
+  function populateQuickPlayLevels() {
+    const container = document.getElementById('quick-play-levels');
+    if (!container) return;
+
+    const levels = getContentLibraryLevels();
+
+    if (levels.length === 0) {
+      container.innerHTML = '<div style="color: #666; padding: 1rem; text-align: center; width: 100;">No levels found. Create some in the Level Editor!</div>';
+      return;
+    }
+
+    container.innerHTML = levels.map(level => `
+      <button class="quick-play-btn" data-level-id="${level.id}" style="
+        padding: 0.75rem 1rem;
+        background: #2a2a3a;
+        color: #fff;
+        border: 1px solid #a4f;
+        cursor: pointer;
+        border-radius: 4px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        min-width: 150px;
+      ">
+        <span style="font-weight: bold;">${level.name}</span>
+        <span style="font-size: 0.75rem; color: #888;">${level.data.width || '?'}x${level.data.height || '?'}</span>
+      </button>
+    `).join('');
+
+    // Add click handlers
+    container.querySelectorAll('.quick-play-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const levelId = (btn as HTMLElement).dataset.levelId;
+        if (levelId) startQuickPlay(levelId);
+      });
+    });
+  }
+
+  // Start a Quick Play game with a specific level
+  function startQuickPlay(levelId: string) {
+    const levels = getContentLibraryLevels();
+    const level = levels.find(l => l.id === levelId);
+
+    if (!level) {
+      alert('Level not found!');
+      return;
+    }
+
+    console.log('[Main] Starting Quick Play with level:', level.name, level.data);
+
+    // Convert level data to a proper dungeon format
+    const levelData = level.data;
+
+    // Get spawn point from level data - NEVER do random placement
+    // Use level's playerSpawn if defined, otherwise default to (5,5)
+    let spawnX = 5, spawnY = 5;
+
+    if (levelData.playerSpawn && typeof levelData.playerSpawn.x === 'number') {
+      spawnX = levelData.playerSpawn.x;
+      spawnY = levelData.playerSpawn.y;
+      console.log(`[Main] Using level playerSpawn: ${spawnX}, ${spawnY}`);
+    } else {
+      console.log(`[Main] No playerSpawn defined, using default: ${spawnX}, ${spawnY}`);
+    }
+
+    // Create engine config from level data
+    const config = {
+      rngSeed: Date.now(),
+      dungeonSeed: Date.now(),
+      players: [],
+      customLevel: levelData
+    };
+
+    // Create engine
+    const engine = new HostEngine(config.dungeonSeed, config, registry, `Quick Play: ${level.name}`);
+
+    // Override the dungeon with the level's tiles
+    try {
+      if (levelData.tiles && engine.getState) {
+        const state = engine.getState();
+        // Inject the level's tiles
+        if (levelData.tiles.length > 0) {
+          state.dungeon = levelData.tiles.map((row: any[]) =>
+            row.map(tileType => ({ type: tileType, seen: false }))
+          );
+          // Set groundItems array for Phase 11a
+          state.groundItems = [];
+          // Update dimensions
+          state.maxLevels = 1;
+          state.currentLevel = 0;
+
+          // Clear existing entities - player will spawn when they join
+          state.entities = [];
+
+          console.log(`[Main] Level tiles injected, player will spawn at ${spawnX}, ${spawnY}`);
+        }
+      }
+    } catch (e) {
+      console.warn('[Main] Could not inject custom level tiles:', e);
+    }
+
+    // Store spawn point for use in join action - modify engine state hint
+    (window as any)._quickPlaySpawnHint = { x: spawnX, y: spawnY };
+
+    startGame(true, undefined, playerName, engine, `Quick Play: ${level.name}`);
+  }
+
   showLobby();
 
   async function showLobby() {
@@ -108,6 +238,18 @@ async function init() {
                     </div>
                 </div>
 
+                <!-- QUICK PLAY - Test Levels from Editor -->
+                <div style="background: #1e1e1e; padding: 1.5rem; border-radius: 8px; border: 1px solid #a4f; width: 100%; max-width: 800px; margin-bottom: 2rem;">
+                    <h3 style="margin-top: 0; color: #a4f;">⚡ QUICK PLAY - Test Your Levels</h3>
+                    <div style="color: #888; font-size: 0.9rem; margin-bottom: 1rem;">Play levels created in the Level Editor</div>
+                    <div id="quick-play-levels" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
+                        <div style="color: #666; padding: 1rem; text-align: center; width: 100%;">Loading levels...</div>
+                    </div>
+                    <div style="font-size: 0.8rem; color: #666; border-top: 1px solid #333; padding-top: 0.5rem;">
+                        💡 Create levels in the <a href="/tools/level-editor.html" style="color: #a4f;" target="_blank">Level Editor</a>
+                    </div>
+                </div>
+
                 <!-- SAVED GAMES -->
                 <div style="background: #1e1e1e; padding: 1.5rem; border-radius: 8px; border: 1px solid #333; width: 100%; max-width: 800px; margin-bottom: 2rem;">
                     <h3 style="margin-top: 0; color: #a64;">SAVED GAMES / REPLAYS</h3>
@@ -122,6 +264,9 @@ async function init() {
                 </div>
             </div>
         `;
+
+    // Populate Quick Play levels
+    populateQuickPlayLevels();
 
     // SAVED GAMES POPULATION
     const gamesList = app.querySelector('#games-list')!;

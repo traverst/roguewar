@@ -27,7 +27,13 @@ export interface Entity {
     hp: number;
     maxHp: number;
     attack: number;
+    defense?: number;
     aiBehavior?: string; // Optional: For AI debugging/visualization
+
+    // Phase 11a additions
+    inventory?: Inventory;
+    equipment?: Equipment;
+    vision?: VisionProfile;
 }
 
 export interface GameState {
@@ -39,6 +45,9 @@ export interface GameState {
     maxLevels: number;         // Total levels in this dungeon
     victoryAchieved?: boolean; // Victory flag when exit reached
     levelEnemies?: { [level: number]: Entity[] }; // Store enemies per level for persistence
+
+    // Phase 11a additions
+    groundItems: GroundItem[]; // Items placed in the world
 }
 
 // Plan Types:
@@ -57,10 +66,76 @@ export interface GameEvent {
     [key: string]: any;
 }
 
-export type ActionType = 'move' | 'attack' | 'wait' | 'join' | 'use_stairs';
+export type ActionType = 'move' | 'attack' | 'wait' | 'join' | 'use_stairs'
+    | 'pickup_item' | 'drop_item' | 'equip_item' | 'unequip_item' | 'use_item';
 
 export interface Action {
     type: ActionType;
     actorId: string;
     payload?: any;
+}
+
+// ===== Phase 11a: Inventory, Equipment, and Vision Types =====
+
+/**
+ * Equipment slots for wearable/holdable items
+ */
+export enum EquipSlot {
+    Head = 'head',
+    Body = 'body',
+    Hands = 'hands',
+    Ring = 'ring',
+    Weapon = 'weapon'
+}
+
+/**
+ * A single slot in an inventory containing an item and quantity
+ */
+export interface InventorySlot {
+    itemId: string;      // Reference to item template ID
+    quantity: number;    // Stack size (1 for non-stackable)
+}
+
+/**
+ * Bounded container for items owned by an entity
+ */
+export interface Inventory {
+    capacity: number;           // Max number of slots
+    slots: InventorySlot[];     // Current items
+}
+
+/**
+ * Equipment slots with currently equipped item IDs
+ */
+export interface Equipment {
+    slots: Partial<Record<EquipSlot, string>>;  // EquipSlot -> itemId or undefined
+}
+
+/**
+ * Vision profile determining how an entity sees the world
+ */
+export interface VisionProfile {
+    range: number;              // Tiles visible in each direction
+    shape: 'circle' | 'cone' | 'square';
+    blocksThroughWalls: boolean;
+}
+
+/**
+ * An item placed in the world (on the ground)
+ */
+export interface GroundItem {
+    id: string;         // Unique instance ID
+    itemId: string;     // Reference to item template
+    pos: Position;      // Location in dungeon
+    quantity: number;   // Stack size
+}
+
+/**
+ * Stat modifiers applied by equipment or effects
+ */
+export interface StatModifiers {
+    attack?: number;
+    defense?: number;
+    maxHp?: number;
+    visionRange?: number;
 }

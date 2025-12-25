@@ -1,105 +1,56 @@
-import { EntityType, TileType, Entity, Position } from './types';
-import { ItemTemplate } from './schemas';
 import { createInventory } from './inventory';
 import { createEquipment } from './equipment';
 import { DEFAULT_VISION } from './vision';
-// Base types are exported from index.ts, not here, to avoid collisions.
-
-export interface ModManifest {
-    id: string;
-    version: string;
-    description: string;
-    dependencies?: string[];
-    hash?: string;
-}
-
-export interface EntityTemplate {
-    id: string; // e.g., 'goblin', 'dragon'
-    name: string;
-    type: EntityType;
-    hp: number;
-    maxHp: number;
-    attack: number;
-    defense?: number;
-    description?: string;
-    inventoryCapacity?: number; // Phase 11a
-    visionRange?: number;       // Phase 11a
-}
-
-export interface TileTemplate {
-    id: string;
-    name: string;
-    type: TileType;
-    description?: string;
-}
-
-export interface ContentPack {
-    manifest: ModManifest;
-    entities: EntityTemplate[];
-    tiles: TileTemplate[];
-    items: ItemTemplate[]; // Phase 11a
-}
-
 /**
  * A registry that holds all loaded mod content.
  * Centralized lookup for the engine to avoid hardcoding.
  */
 export class ModRegistry {
-    private entities: Map<string, EntityTemplate> = new Map();
-    private tiles: Map<string, TileTemplate> = new Map();
-    private items: Map<string, ItemTemplate> = new Map(); // Phase 11a
-    private manifests: Map<string, ModManifest> = new Map();
-
-    constructor(packs: ContentPack[] = []) {
+    entities = new Map();
+    tiles = new Map();
+    items = new Map(); // Phase 11a
+    manifests = new Map();
+    constructor(packs = []) {
         for (const pack of packs) {
             this.registerPack(pack);
         }
     }
-
-    public registerPack(pack: ContentPack) {
+    registerPack(pack) {
         this.manifests.set(pack.manifest.id, pack.manifest);
-
         for (const entity of pack.entities) {
             // Namespace the ID to prevent collisions, e.g., 'core:goblin'
             const namespacedId = `${pack.manifest.id}:${entity.id}`;
             this.entities.set(namespacedId, entity);
         }
-
         for (const tile of pack.tiles) {
             const namespacedId = `${pack.manifest.id}:${tile.id}`;
             this.tiles.set(namespacedId, tile);
         }
-
         // Phase 11a: Register items
         for (const item of pack.items || []) {
             const namespacedId = `${pack.manifest.id}:${item.id}`;
             this.items.set(namespacedId, item);
         }
     }
-
-    public getEntity(id: string): EntityTemplate | undefined {
+    getEntity(id) {
         return this.entities.get(id);
     }
-
-    public getTile(id: string): TileTemplate | undefined {
+    getTile(id) {
         return this.tiles.get(id);
     }
-
-    public getItem(id: string): ItemTemplate | undefined {
+    getItem(id) {
         return this.items.get(id);
     }
-
-    public getAllItems(): ItemTemplate[] {
+    getAllItems() {
         return Array.from(this.items.values());
     }
-
     /**
      * Create a concrete game Entity from a template ID.
      */
-    public createEntity(templateId: string, instanceId: string, pos: Position): Entity | undefined {
+    createEntity(templateId, instanceId, pos) {
         const template = this.entities.get(templateId);
-        if (!template) return undefined;
-
+        if (!template)
+            return undefined;
         return {
             id: instanceId,
             type: template.type,
@@ -118,8 +69,7 @@ export class ModRegistry {
             }
         };
     }
-
-    public getAllManifests(): ModManifest[] {
+    getAllManifests() {
         return Array.from(this.manifests.values());
     }
 }

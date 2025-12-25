@@ -10,3 +10,15 @@ export var EntityType;
     EntityType["Player"] = "player";
     EntityType["Enemy"] = "enemy";
 })(EntityType || (EntityType = {}));
+// ===== Phase 11a: Inventory, Equipment, and Vision Types =====
+/**
+ * Equipment slots for wearable/holdable items
+ */
+export var EquipSlot;
+(function (EquipSlot) {
+    EquipSlot["Head"] = "head";
+    EquipSlot["Body"] = "body";
+    EquipSlot["Hands"] = "hands";
+    EquipSlot["Ring"] = "ring";
+    EquipSlot["Weapon"] = "weapon";
+})(EquipSlot || (EquipSlot = {}));

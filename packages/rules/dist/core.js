@@ -1,5 +1,7 @@
-import { EntityType } from './types.js';
-import { mulberry32 } from './rng.js';
+import { EntityType } from './types';
+import { mulberry32 } from './rng';
+import { addItem, removeItem } from './inventory';
+import { equipItem, unequipItem, getDefaultSlot } from './equipment';
 // Helper to deep clone state (essential for pure functions)
 function cloneState(state) {
     return JSON.parse(JSON.stringify(state)); // Optimization: Use structuredClone if available or manual clone for perf later.
@@ -25,7 +27,26 @@ function isValidMove(state, entity, dx, dy) {
 function getEntityAt(state, x, y) {
     return state.entities.find(e => e.pos.x === x && e.pos.y === y && e.hp > 0);
 }
-export function resolveTurn(initialState, action) {
+// Phase 11a helpers
+function getGroundItemAt(state, x, y) {
+    return state.groundItems?.find(item => item.pos.x === x && item.pos.y === y);
+}
+function removeGroundItem(state, itemId) {
+    if (state.groundItems) {
+        const idx = state.groundItems.findIndex(i => i.id === itemId);
+        if (idx >= 0)
+            state.groundItems.splice(idx, 1);
+    }
+}
+function createGroundItem(state, itemId, pos, quantity = 1) {
+    const id = `ground_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const groundItem = { id, itemId, pos: { ...pos }, quantity };
+    if (!state.groundItems)
+        state.groundItems = [];
+    state.groundItems.push(groundItem);
+    return groundItem;
+}
+export function resolveTurn(initialState, action, registry) {
     const state = cloneState(initialState);
     const events = [];
     // 1. Process Player Action
@@ -61,6 +82,91 @@ export function resolveTurn(initialState, action) {
         else if (action.type === 'wait') {
             events.push({ type: 'wait', entityId: actor.id });
         }
+        // Phase 11a: Item Actions
+        else if (action.type === 'pickup_item' && actor.inventory) {
+            const groundItem = getGroundItemAt(state, actor.pos.x, actor.pos.y);
+            if (groundItem) {
+                const itemDef = registry?.getItem(groundItem.itemId);
+                const isStackable = itemDef?.type === 'consumable';
+                const newInventory = addItem(actor.inventory, groundItem.itemId, groundItem.quantity, isStackable);
+                if (newInventory) {
+                    actor.inventory = newInventory;
+                    removeGroundItem(state, groundItem.id);
+                    events.push({ type: 'item_pickup', entityId: actor.id, itemId: groundItem.itemId, quantity: groundItem.quantity });
+                }
+            }
+        }
+        else if (action.type === 'drop_item' && actor.inventory) {
+            const { slotIndex } = action.payload || {};
+            if (slotIndex !== undefined && slotIndex < actor.inventory.slots.length) {
+                const slot = actor.inventory.slots[slotIndex];
+                const newInventory = removeItem(actor.inventory, slotIndex, slot.quantity);
+                if (newInventory) {
+                    actor.inventory = newInventory;
+                    createGroundItem(state, slot.itemId, actor.pos, slot.quantity);
+                    events.push({ type: 'item_drop', entityId: actor.id, itemId: slot.itemId, quantity: slot.quantity });
+                }
+            }
+        }
+        else if (action.type === 'equip_item' && actor.inventory && actor.equipment) {
+            const { slotIndex } = action.payload || {};
+            if (slotIndex !== undefined && slotIndex < actor.inventory.slots.length) {
+                const invSlot = actor.inventory.slots[slotIndex];
+                const itemDef = registry?.getItem(invSlot.itemId);
+                if (itemDef) {
+                    const equipSlot = getDefaultSlot(itemDef);
+                    if (equipSlot) {
+                        // Remove from inventory
+                        const newInventory = removeItem(actor.inventory, slotIndex, 1);
+                        if (newInventory) {
+                            actor.inventory = newInventory;
+                            // If slot has item, swap to inventory
+                            const currentEquipped = actor.equipment.slots[equipSlot];
+                            if (currentEquipped) {
+                                actor.inventory = addItem(actor.inventory, currentEquipped, 1, false) || actor.inventory;
+                            }
+                            // Equip new item
+                            actor.equipment = equipItem(actor.equipment, equipSlot, invSlot.itemId);
+                            events.push({ type: 'item_equip', entityId: actor.id, itemId: invSlot.itemId, slot: equipSlot });
+                        }
+                    }
+                }
+            }
+        }
+        else if (action.type === 'unequip_item' && actor.inventory && actor.equipment) {
+            const { slot } = action.payload || {};
+            if (slot && actor.equipment.slots[slot]) {
+                const itemId = actor.equipment.slots[slot];
+                // Add to inventory
+                const newInventory = addItem(actor.inventory, itemId, 1, false);
+                if (newInventory) {
+                    actor.inventory = newInventory;
+                    actor.equipment = unequipItem(actor.equipment, slot);
+                    events.push({ type: 'item_unequip', entityId: actor.id, itemId, slot });
+                }
+            }
+        }
+        else if (action.type === 'use_item' && actor.inventory) {
+            const { slotIndex } = action.payload || {};
+            if (slotIndex !== undefined && slotIndex < actor.inventory.slots.length) {
+                const invSlot = actor.inventory.slots[slotIndex];
+                const itemDef = registry?.getItem(invSlot.itemId);
+                if (itemDef && itemDef.type === 'consumable') {
+                    // Apply consumable effect (simple heal for now)
+                    // TODO: Use rule bindings for custom effects
+                    if (invSlot.itemId.includes('health_potion') || invSlot.itemId.includes('potion')) {
+                        const healAmount = 25;
+                        actor.hp = Math.min(actor.maxHp, actor.hp + healAmount);
+                        events.push({ type: 'item_used', entityId: actor.id, itemId: invSlot.itemId, effect: 'heal', amount: healAmount });
+                    }
+                    // Reduce quantity
+                    const newInventory = removeItem(actor.inventory, slotIndex, 1);
+                    if (newInventory) {
+                        actor.inventory = newInventory;
+                    }
+                }
+            }
+        }
     }
     // 1.5 Handle Join Action
     if (action.type === 'join') {
@@ -86,68 +192,39 @@ export function resolveTurn(initialState, action) {
                 if (found)
                     break;
             }
-            const newPlayer = {
-                id: action.actorId,
-                type: EntityType.Player,
-                pos: { x: spawnX, y: spawnY },
-                hp: 100,
-                maxHp: 100,
-                attack: 10
-            };
+            const templateId = action.payload?.templateId || (action.actorId.startsWith('ai-') ? 'core:goblin' : 'core:player');
+            let newPlayer;
+            if (registry) {
+                newPlayer = registry.createEntity(templateId, action.actorId, { x: spawnX, y: spawnY });
+            }
+            // Fallback for missing registry or template
+            if (!newPlayer) {
+                newPlayer = {
+                    id: action.actorId,
+                    type: action.actorId.startsWith('ai-') ? EntityType.Enemy : EntityType.Player,
+                    templateId,
+                    pos: { x: spawnX, y: spawnY },
+                    hp: 100,
+                    maxHp: 100,
+                    attack: 10
+                };
+            }
             state.entities.push(newPlayer);
             events.push({ type: 'spawned', entityId: newPlayer.id, pos: newPlayer.pos, entity: newPlayer });
         }
     }
-    // 2. Process Enemies
-    // Deterministic AI requires iterating in a stable order (by ID or index)
-    const enemies = state.entities.filter(e => e.type === EntityType.Enemy && e.hp > 0);
-    // Create RNG from seed + turn
-    // This ensures that even if we re-run this turn, the enemies behave the same.
-    // Note: We update the seed at the end of the turn.
-    for (const enemy of enemies) {
-        const player = state.entities.find(e => e.type === EntityType.Player && e.hp > 0);
-        if (!player)
-            break;
-        const dx = Math.sign(player.pos.x - enemy.pos.x);
-        const dy = Math.sign(player.pos.y - enemy.pos.y);
-        // Simple AI: Move towards player.
-        // Prioritize axis with larger distance? Or random?
-        // Deterministic "Random" choice needs the seed.
-        let moveX = 0;
-        let moveY = 0;
-        if (Math.abs(player.pos.x - enemy.pos.x) + Math.abs(player.pos.y - enemy.pos.y) === 1) {
-            // Attack
-            moveX = player.pos.x - enemy.pos.x;
-            moveY = player.pos.y - enemy.pos.y;
-            // Copied combat logic (refactor later)
-            player.hp -= enemy.attack;
-            events.push({ type: 'attacked', attackerId: enemy.id, targetId: player.id, damage: enemy.attack });
-            if (player.hp <= 0) {
-                events.push({ type: 'killed', entityId: player.id });
-            }
-        }
-        else {
-            // Move
-            if (dx !== 0 && isValidMove(state, enemy, dx, 0)) {
-                moveX = dx;
-            }
-            else if (dy !== 0 && isValidMove(state, enemy, 0, dy)) {
-                moveY = dy;
-            }
-            if (moveX !== 0 || moveY !== 0) {
-                enemy.pos.x += moveX;
-                enemy.pos.y += moveY;
-                events.push({ type: 'moved', entityId: enemy.id, from: { x: enemy.pos.x - moveX, y: enemy.pos.y - moveY }, to: { x: enemy.pos.x, y: enemy.pos.y } });
-            }
-        }
-    }
-    // Cleanup dead entities?
+    // Cleanup dead entities
     state.entities = state.entities.filter(e => e.hp > 0);
+    return { nextState: state, events };
+}
+/**
+ * Advance the game clock by one turn.
+ * Updates turn counter and progresses the RNG seed.
+ */
+export function advanceTurn(initialState) {
+    const state = cloneState(initialState);
     state.turn++;
-    // Advance seed for next turn
-    // Using a simple strategy: hash the current seed.
-    // Or keep it simple: nextState.seed = next random number
     const rng = mulberry32(state.seed);
     state.seed = Math.floor(rng() * 4294967296);
-    return { nextState: state, events };
+    return state;
 }

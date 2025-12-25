@@ -9,3 +9,8 @@ export * from './mods';
 export * from './mods/coreContent';
 export * from './schemas';
 export * from './validation';
+
+// Phase 11a: Inventory, Equipment, Vision
+export * from './inventory';
+export * from './equipment';
+export * from './vision';

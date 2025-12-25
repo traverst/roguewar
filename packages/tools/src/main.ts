@@ -106,6 +106,21 @@ class ToolsApp {
                         <li>✅ Compatible with mods, multiplayer, and replays</li>
                     </ul>
                 </div>
+                
+                <div class="panel" style="margin-top: var(--spacing-lg); border: 1px solid var(--primary-color);">
+                    <div class="panel-title">🛠️ Library Admin</div>
+                    <p style="color: var(--text-secondary); margin-bottom: var(--spacing-md);">
+                        Export your entire content library to a JSON file for backup or to transfer to another machine.
+                    </p>
+                    <div id="library-stats" style="margin-bottom: var(--spacing-md); padding: var(--spacing-sm); background: var(--bg-tertiary); border-radius: var(--radius-md); font-size: 0.9rem;"></div>
+                    <div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap;">
+                        <button class="btn btn-success" id="btn-export-library">📦 Export Full Library</button>
+                        <button class="btn btn-secondary" id="btn-import-library">📂 Import Library</button>
+                        <button class="btn btn-secondary" id="btn-clear-library" style="margin-left: auto; color: #f66;">🗑️ Clear All</button>
+                    </div>
+                    <input type="file" id="library-file-input" style="display: none;" accept=".json">
+                    <div id="library-messages" style="margin-top: var(--spacing-sm);"></div>
+                </div>
             </div>
         `;
     }
@@ -139,6 +154,136 @@ class ToolsApp {
 
         // Expose switchEditor globally for inline onclick handlers
         (window as any).switchEditor = this.switchEditor.bind(this);
+
+        // Library Admin - show stats
+        this.updateLibraryStats();
+
+        // Library Admin - Export
+        document.getElementById('btn-export-library')?.addEventListener('click', () => {
+            this.exportLibrary();
+        });
+
+        // Library Admin - Import
+        document.getElementById('btn-import-library')?.addEventListener('click', () => {
+            document.getElementById('library-file-input')?.click();
+        });
+
+        document.getElementById('library-file-input')?.addEventListener('change', (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (file) {
+                this.importLibrary(file);
+            }
+        });
+
+        // Library Admin - Clear All
+        document.getElementById('btn-clear-library')?.addEventListener('click', () => {
+            if (confirm('⚠️ Are you sure you want to delete ALL content from the library? This cannot be undone!')) {
+                localStorage.removeItem('roguewar_content_library');
+                this.showLibraryMessage('🗑️ Library cleared!', 'warning');
+                this.updateLibraryStats();
+            }
+        });
+    }
+
+    private updateLibraryStats(): void {
+        const statsEl = document.getElementById('library-stats');
+        if (!statsEl) return;
+
+        const libraryJson = localStorage.getItem('roguewar_content_library');
+        if (!libraryJson) {
+            statsEl.innerHTML = '<span style="color: var(--text-secondary);">Library is empty</span>';
+            return;
+        }
+
+        try {
+            const library = JSON.parse(libraryJson);
+            const counts: Record<string, number> = {};
+            library.forEach((item: any) => {
+                counts[item.type] = (counts[item.type] || 0) + 1;
+            });
+
+            const summary = Object.entries(counts)
+                .map(([type, count]) => `<strong>${count}</strong> ${type}${count > 1 ? 's' : ''}`)
+                .join(' • ');
+
+            const totalSize = new Blob([libraryJson]).size;
+            const sizeStr = totalSize > 1024 ? `${(totalSize / 1024).toFixed(1)} KB` : `${totalSize} bytes`;
+
+            statsEl.innerHTML = `📊 ${summary} <span style="color: var(--text-tertiary);">(${sizeStr})</span>`;
+        } catch (e) {
+            statsEl.innerHTML = '<span style="color: #f66;">Error reading library</span>';
+        }
+    }
+
+    private exportLibrary(): void {
+        const libraryJson = localStorage.getItem('roguewar_content_library');
+        if (!libraryJson) {
+            this.showLibraryMessage('⚠️ Library is empty, nothing to export', 'warning');
+            return;
+        }
+
+        const blob = new Blob([libraryJson], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `roguewar-library-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        this.showLibraryMessage('✅ Library exported successfully!', 'success');
+    }
+
+    private importLibrary(file: File): void {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const json = e.target?.result as string;
+                const imported = JSON.parse(json);
+
+                if (!Array.isArray(imported)) {
+                    throw new Error('Invalid library format');
+                }
+
+                // Merge with existing
+                const existingJson = localStorage.getItem('roguewar_content_library');
+                const existing = existingJson ? JSON.parse(existingJson) : [];
+
+                // Merge by ID (imported overwrites existing)
+                const merged = [...existing];
+                imported.forEach((item: any) => {
+                    const idx = merged.findIndex((e: any) => e.id === item.id);
+                    if (idx >= 0) {
+                        merged[idx] = item;
+                    } else {
+                        merged.push(item);
+                    }
+                });
+
+                localStorage.setItem('roguewar_content_library', JSON.stringify(merged));
+                this.showLibraryMessage(`✅ Imported ${imported.length} items (merged with existing)`, 'success');
+                this.updateLibraryStats();
+
+                // Reset file input
+                (document.getElementById('library-file-input') as HTMLInputElement).value = '';
+            } catch (err) {
+                this.showLibraryMessage('❌ Invalid library file format', 'error');
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    private showLibraryMessage(message: string, type: 'success' | 'warning' | 'error'): void {
+        const el = document.getElementById('library-messages');
+        if (!el) return;
+
+        const colors: Record<string, string> = {
+            success: '#4a6',
+            warning: '#a64',
+            error: '#f66'
+        };
+
+        el.innerHTML = `<div style="padding: var(--spacing-sm); color: ${colors[type]}; font-size: 0.9rem;">${message}</div>`;
+        setTimeout(() => { el.innerHTML = ''; }, 5000);
     }
 
     private switchEditor(editorId: string): void {
@@ -163,6 +308,14 @@ class ToolsApp {
     private initializeEditor(editorId: string): void {
         const root = document.getElementById(`${editorId}-editor-root`);
         if (!root) return;
+
+        // Check if already initialized (has child content)
+        if (root.hasAttribute('data-initialized')) {
+            return; // Already initialized, skip
+        }
+
+        // Mark as initialized
+        root.setAttribute('data-initialized', 'true');
 
         // Import and initialize specific editors
         switch (editorId) {

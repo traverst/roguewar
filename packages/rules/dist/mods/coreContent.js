@@ -1,7 +1,5 @@
-import { ContentPack } from '../mods';
-import { EntityType, TileType } from '../types';
-
-export const CORE_CONTENT: ContentPack = {
+import { EntityType } from '../types';
+export const CORE_CONTENT = {
     manifest: {
         id: 'core',
         version: '1.0.0',
@@ -35,12 +33,12 @@ export const CORE_CONTENT: ContentPack = {
         {
             id: 'floor',
             name: 'Stone Floor',
-            type: 'floor' as TileType
+            type: 'floor'
         },
         {
             id: 'wall',
             name: 'Dungeon Wall',
-            type: 'wall' as TileType
+            type: 'wall'
         }
     ],
     items: [

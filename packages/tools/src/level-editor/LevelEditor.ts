@@ -22,6 +22,11 @@ export class LevelEditor {
     private selectedItem: { id: string; name: string } | null = null;
     private sidebarTab: 'generation' | 'properties' | 'actions' = 'generation';
 
+    // Level metadata properties
+    private levelName: string = 'My Level';
+    private levelDesc: string = '';
+    private loadedLevelId: string | null = null; // Track which level is loaded for overwrite
+
     constructor(private root: HTMLElement) {
         this.init();
     }
@@ -182,11 +187,11 @@ export class LevelEditor {
                 return `
                     <div class="form-group">
                         <label class="form-label">Level Name</label>
-                        <input type="text" class="form-input" id="level-name" value="My Level" />
+                        <input type="text" class="form-input" id="level-name" value="${this.levelName}" />
                     </div>
                     <div class="form-group">
                         <label class="form-label">Description</label>
-                        <textarea class="form-input" id="level-desc" rows="3" placeholder="A custom level layout"></textarea>
+                        <textarea class="form-input" id="level-desc" rows="3" placeholder="A custom level layout">${this.levelDesc}</textarea>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Width</label>
@@ -222,10 +227,35 @@ export class LevelEditor {
                         </div>
                     `
                     : '';
+
+                // Build saved levels list for dropdown
+                const savedLevels = ContentLibrary.getItems('level');
+                const levelOptionsHtml = savedLevels.length > 0
+                    ? savedLevels.map(l => `<option value="${l.id}">${l.name}</option>`).join('')
+                    : '<option value="" disabled>No saved levels</option>';
+
                 return `
                     ${entityLegendHtml}
+                    
+                    <!-- Library Section -->
+                    <div style="margin-bottom: var(--spacing-md); padding: var(--spacing-sm); background: var(--surface-secondary); border-radius: var(--radius-md);">
+                        <div style="font-weight: bold; margin-bottom: var(--spacing-xs); color: var(--primary-color);">📚 Library</div>
+                        <div class="form-group" style="margin-bottom: var(--spacing-xs);">
+                            <select class="form-input" id="library-level-select" style="width: 100%;">
+                                <option value="">-- Select a level to load --</option>
+                                ${levelOptionsHtml}
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: var(--spacing-xs);">
+                            <button class="btn btn-info" id="btn-load-library" style="flex: 1;">📂 Load</button>
+                            <button class="btn btn-danger" id="btn-delete-library" style="flex: 1;">🗑️ Delete</button>
+                        </div>
+                        <button class="btn btn-success" id="btn-save-library" style="width: 100%; margin-top: var(--spacing-xs);">💾 Save to Library</button>
+                    </div>
+                    
+                    <!-- Export/Import Section -->
                     <div class="btn-group" style="flex-direction: column; width: 100%;">
-                        <button class="btn btn-success" id="btn-export">Export JSON</button>
+                        <button class="btn btn-secondary" id="btn-export">Export JSON</button>
                         <button class="btn btn-secondary" id="btn-import">Import JSON</button>
                     </div>
                     <div id="validation-messages" class="validation-messages"></div>
@@ -262,17 +292,25 @@ export class LevelEditor {
         switch (this.activeLibraryTab) {
             case 'levels':
                 const level = item.data;
-                this.width = level.width;
-                this.height = level.height;
-                this.tiles = level.tiles;
-                this.playerSpawn = level.playerSpawn;
+                // Set all class properties from level data
+                this.loadedLevelId = item.id; // Track for overwrite support
+                this.levelName = item.name;
+                this.levelDesc = level.description || '';
+                this.width = level.width || 50;
+                this.height = level.height || 50;
+                this.tiles = level.tiles || [];
+                this.playerSpawn = level.playerSpawn || { x: 5, y: 5 };
                 this.enemySpawns = level.enemySpawns || [];
+                this.placedEntities = level.placedEntities || [];
 
-                (document.getElementById('level-name') as HTMLInputElement).value = level.name;
-                (document.getElementById('level-desc') as HTMLTextAreaElement).value = level.description || '';
+                // Re-initialize tiles if empty
+                if (this.tiles.length === 0) {
+                    this.initTiles();
+                }
 
                 this.setupCanvas();
                 this.drawGrid();
+                this.refreshSidebarTab(); // Refresh to show new values in Properties tab
                 this.showMessage(`✅ Loaded "${item.name}" from library`);
                 break;
 
@@ -349,12 +387,136 @@ export class LevelEditor {
             });
         }
 
+        // Properties tab input sync (update class properties immediately)
+        document.getElementById('level-name')?.addEventListener('input', (e) => {
+            this.levelName = (e.target as HTMLInputElement).value;
+        });
+        document.getElementById('level-desc')?.addEventListener('input', (e) => {
+            this.levelDesc = (e.target as HTMLTextAreaElement).value;
+        });
+        document.getElementById('level-width')?.addEventListener('input', (e) => {
+            const val = parseInt((e.target as HTMLInputElement).value);
+            if (!isNaN(val) && val >= 10 && val <= 100) {
+                this.width = val;
+            }
+        });
+        document.getElementById('level-height')?.addEventListener('input', (e) => {
+            const val = parseInt((e.target as HTMLInputElement).value);
+            if (!isNaN(val) && val >= 10 && val <= 100) {
+                this.height = val;
+            }
+        });
+
         // Properties tab buttons
         document.getElementById('btn-resize')?.addEventListener('click', () => this.resizeGrid());
 
         // Actions tab buttons
         document.getElementById('btn-export')?.addEventListener('click', () => this.exportDungeon());
         document.getElementById('btn-import')?.addEventListener('click', () => this.importDungeon());
+
+        // Library buttons
+        document.getElementById('btn-save-library')?.addEventListener('click', () => this.saveToLibrary());
+        document.getElementById('btn-load-library')?.addEventListener('click', () => this.loadFromLibrary());
+        document.getElementById('btn-delete-library')?.addEventListener('click', () => this.deleteFromLibrary());
+    }
+
+    private saveToLibrary(): void {
+        const levelData = {
+            width: this.width,
+            height: this.height,
+            tiles: this.tiles,
+            playerSpawn: this.playerSpawn,
+            enemySpawns: this.enemySpawns,
+            placedEntities: this.placedEntities,
+            description: this.levelDesc
+        };
+
+        // If a level is loaded, ask whether to overwrite or save as new
+        let levelId = `level-${Date.now()}`;
+        let isOverwrite = false;
+
+        if (this.loadedLevelId) {
+            const choice = confirm(`Overwrite existing level "${this.levelName}"?\n\nClick OK to overwrite, Cancel to save as new.`);
+            if (choice) {
+                levelId = this.loadedLevelId;
+                isOverwrite = true;
+            }
+        }
+
+        ContentLibrary.saveItem({
+            id: levelId,
+            name: this.levelName || 'Unnamed Level',
+            type: 'level',
+            data: levelData
+        });
+
+        // Update loaded ID to the saved one
+        this.loadedLevelId = levelId;
+
+        const action = isOverwrite ? 'updated' : 'saved';
+        this.showMessage(`✅ Level "${this.levelName}" ${action} in library!`);
+        this.refreshSidebarTab(); // Refresh to show new level in dropdown
+        this.renderTabbedLibrary(); // Refresh library panel
+    }
+
+    private loadFromLibrary(): void {
+        const select = document.getElementById('library-level-select') as HTMLSelectElement;
+        if (!select || !select.value) {
+            this.showMessage('⚠️ Please select a level to load');
+            return;
+        }
+
+        const levelItem = ContentLibrary.getItem(select.value);
+        if (!levelItem || levelItem.type !== 'level') {
+            this.showMessage('⚠️ Level not found');
+            return;
+        }
+
+        const data = levelItem.data;
+
+        // Load level data and track the loaded ID
+        this.loadedLevelId = levelItem.id;
+        this.levelName = levelItem.name;
+        this.levelDesc = data.description || '';
+        this.width = data.width || 50;
+        this.height = data.height || 50;
+        this.tiles = data.tiles || [];
+        this.playerSpawn = data.playerSpawn || { x: 5, y: 5 };
+        this.enemySpawns = data.enemySpawns || [];
+        this.placedEntities = data.placedEntities || [];
+
+        // If tiles is empty, reinitialize
+        if (this.tiles.length === 0) {
+            this.initTiles();
+        }
+
+        this.setupCanvas();
+        this.drawGrid();
+        this.refreshSidebarTab();
+        this.showMessage(`✅ Level "${levelItem.name}" loaded!`);
+    }
+
+    private deleteFromLibrary(): void {
+        const select = document.getElementById('library-level-select') as HTMLSelectElement;
+        if (!select || !select.value) {
+            this.showMessage('⚠️ Please select a level to delete');
+            return;
+        }
+
+        const levelItem = ContentLibrary.getItem(select.value);
+        if (!levelItem) {
+            this.showMessage('⚠️ Level not found');
+            return;
+        }
+
+        if (!confirm(`Delete level "${levelItem.name}"?`)) {
+            return;
+        }
+
+        ContentLibrary.deleteItem(select.value);
+        this.showMessage(`🗑️ Level "${levelItem.name}" deleted`);
+        this.refreshSidebarTab(); // Refresh dropdown
+        this.renderTabbedLibrary(); // Refresh library panel
     }
 
     private showMessage(html: string): void {
