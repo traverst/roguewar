@@ -78,55 +78,105 @@ async function init() {
     }
   }
 
-  // Populate the Quick Play level list
+  // Populate the Quick Play level and dungeon lists
   function populateQuickPlayLevels() {
     const container = document.getElementById('quick-play-levels');
     if (!container) return;
 
-    const levels = getContentLibraryLevels();
+    const allContent = getContentLibraryLevels();
+    const levels = allContent.filter(item => item.type === 'level');
+    const dungeons = allContent.filter(item => item.type === 'dungeon');
 
-    if (levels.length === 0) {
-      container.innerHTML = '<div style="color: #666; padding: 1rem; text-align: center; width: 100;">No levels found. Create some in the Level Editor!</div>';
+    console.log('[Main] Quick Play content - Levels:', levels.length, 'Dungeons:', dungeons.length);
+
+    if (levels.length === 0 && dungeons.length === 0) {
+      container.innerHTML = '<div style="color: #666; padding: 2rem; text-align: center;">No levels or dungeons found in library</div>';
       return;
     }
 
-    container.innerHTML = levels.map(level => `
-      <button class="quick-play-btn" data-level-id="${level.id}" style="
-        padding: 0.75rem 1rem;
-        background: #2a2a3a;
-        color: #fff;
-        border: 1px solid #a4f;
-        cursor: pointer;
-        border-radius: 4px;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        min-width: 150px;
-      ">
-        <span style="font-weight: bold;">${level.name}</span>
-        <span style="font-size: 0.75rem; color: #888;">${level.data.width || '?'}x${level.data.height || '?'}</span>
-      </button>
-    `).join('');
+    let html = '';
+
+    // Single Levels Section
+    if (levels.length > 0) {
+      html += '<div style="margin-bottom: 1rem;"><div style="font-size: 0.9rem; color: #a4f; font-weight: bold; margin-bottom: 0.5rem;">Single Levels:</div><div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">';
+      html += levels.map(level => `
+        <button class="quick-play-btn" data-level-id="${level.id}" data-type="level" style="
+          padding: 0.75rem 1rem;
+          background: #2a2a3a;
+          color: #fff;
+          border: 1px solid #a4f;
+          cursor: pointer;
+          border-radius: 4px;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          min-width: 150px;
+        ">
+          <span style="font-weight: bold;">${level.name}</span>
+          <span style="font-size: 0.75rem; color: #888;">${level.data.width || '?'}x${level.data.height || '?'}</span>
+        </button>
+      `).join('');
+      html += '</div></div>';
+    }
+
+    // Multi-Level Dungeons Section
+    if (dungeons.length > 0) {
+      html += '<div><div style="font-size: 0.9rem; color: #4a6; font-weight: bold; margin-bottom: 0.5rem;">🏰 Multi-Level Dungeons:</div><div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">';
+      html += dungeons.map(dungeon => `
+        <button class="quick-play-btn" data-level-id="${dungeon.id}" data-type="dungeon" style="
+          padding: 0.75rem 1rem;
+          background: #2a3a2a;
+          color: #fff;
+          border: 1px solid #4a6;
+          cursor: pointer;
+          border-radius: 4px;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          min-width: 150px;
+        ">
+          <span style="font-weight: bold;">${dungeon.name}</span>
+          <span style="font-size: 0.75rem; color: #888;">${dungeon.data.levels?.length || '?'} levels</span>
+        </button>
+      `).join('');
+      html += '</div></div>';
+    }
+
+    container.innerHTML = html;
 
     // Add click handlers
     container.querySelectorAll('.quick-play-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const levelId = (btn as HTMLElement).dataset.levelId;
-        if (levelId) startQuickPlay(levelId);
+        const type = (btn as HTMLElement).dataset.type;
+        if (levelId) startQuickPlay(levelId, type as 'level' | 'dungeon');
       });
     });
   }
 
-  // Start a Quick Play game with a specific level
-  function startQuickPlay(levelId: string) {
-    const levels = getContentLibraryLevels();
-    const level = levels.find(l => l.id === levelId);
+  // Start a Quick Play game with a specific level or dungeon
+  function startQuickPlay(levelId: string, type: 'level' | 'dungeon' = 'level') {
+    const allContent = getContentLibraryLevels();
+    const content = allContent.find(l => l.id === levelId);
 
-    if (!level) {
-      alert('Level not found!');
+    if (!content) {
+      alert('Level or dungeon not found!');
       return;
     }
 
+    console.log(`[Main] Starting Quick Play ${type}:`, content.name, content.data);
+
+    if (type === 'dungeon') {
+      // Start multi-level dungeon
+      startDungeonQuickPlay(content);
+    } else {
+      // Start single level
+      startLevelQuickPlay(content);
+    }
+  }
+
+  // Start Quick Play with a single level
+  function startLevelQuickPlay(level: { id: string; name: string; data: any }) {
     console.log('[Main] Starting Quick Play with level:', level.name, level.data);
 
     // Convert level data to a proper dungeon format
@@ -180,10 +230,126 @@ async function init() {
       console.warn('[Main] Could not inject custom level tiles:', e);
     }
 
-    // Store spawn point for use in join action - modify engine state hint
+    // Store spawn point for use in join action
     (window as any)._quickPlaySpawnHint = { x: spawnX, y: spawnY };
 
     startGame(true, undefined, playerName, engine, `Quick Play: ${level.name}`);
+  }
+
+  //  Start Quick Play with a multi-level dungeon
+  function startDungeonQuickPlay(dungeon: { id: string; name: string; data: any }) {
+    console.log('[Main] Starting Quick Play with dungeon:', dungeon.name, dungeon.data);
+
+    const dungeonData = dungeon.data;
+
+    // Load all levels from the library
+    const allContent = getContentLibraryLevels();
+    const dungeonLevels: any[] = [];
+    const stairPositions: any = {};
+
+    // Load each level in the dungeon
+    if (!dungeonData.levels || dungeonData.levels.length === 0) {
+      alert('This dungeon has no levels!');
+      return;
+    }
+
+    for (let i = 0; i < dungeonData.levels.length; i++) {
+      const levelRef = dungeonData.levels[i];
+      const levelData = allContent.find(l => l.id === levelRef.levelId);
+
+      if (!levelData) {
+        console.warn(`[Main] Level ${levelRef.levelId} not found in library, skipping`);
+        continue;
+      }
+
+      // Convert level tiles to dungeon format
+      const tiles = levelData.data.tiles.map((row: any[]) =>
+        row.map((tileType: string) => ({ type: tileType, seen: false }))
+      );
+
+      dungeonLevels.push(tiles);
+
+      // CRITICAL: Scan tiles to find stair positions (Level Editor doesn't save these separately)
+      let stairsUp: { x: number; y: number } | undefined;
+      let stairsDown: { x: number; y: number } | undefined;
+      let exit: { x: number; y: number } | undefined;
+
+      for (let y = 0; y < levelData.data.tiles.length; y++) {
+        for (let x = 0; x < levelData.data.tiles[y].length; x++) {
+          const tileType = levelData.data.tiles[y][x];
+          if (tileType === 'stairs_up') stairsUp = { x, y };
+          if (tileType === 'stairs_down') stairsDown = { x, y };
+          if (tileType === 'exit') exit = { x, y };
+        }
+      }
+
+      stairPositions[i] = { up: stairsUp, down: stairsDown, exit };
+
+      console.log(`[Main] Loaded level ${i}: ${levelData.name}, stairs:`, stairPositions[i]);
+    }
+
+    if (dungeonLevels.length === 0) {
+      alert('No valid levels found in this dungeon!');
+      return;
+    }
+
+    // Get spawn point from first level
+    const firstLevelRef = dungeonData.levels[0];
+    const firstLevelData = allContent.find(l => l.id === firstLevelRef.levelId);
+
+    let spawnX = 5, spawnY = 5;
+    if (firstLevelData?.data?.playerSpawn) {
+      spawnX = firstLevelData.data.playerSpawn.x;
+      spawnY = firstLevelData.data.playerSpawn.y;
+      console.log(`[Main] Using first level's playerSpawn: (${spawnX}, ${spawnY})`);
+    } else {
+      console.warn(`[Main] No playerSpawn in first level! Using default (${spawnX}, ${spawnY})`);
+    }
+
+    // Create engine config
+    const config = {
+      rngSeed: Date.now(),
+      dungeonSeed: Date.now(),
+      players: []
+    };
+
+    // Create engine
+    const engine = new HostEngine(config.dungeonSeed, config, registry, `Quick Play: ${dungeon.name}`);
+
+    // CRITICAL: Access the engine's ACTUAL internal state, not the clone from getState()
+    // getState() returns JSON.parse(JSON.stringify(this.state)) which is a CLONE
+    const state = (engine as any).state;
+
+    // Determine starting level - Dungeon Editor uses 0-based indexing, so level 0 is first level
+    const startLevel = 0;  // Always start at first level for Quick Play
+    console.log(`[Main] Starting Quick Play at level ${startLevel} of ${dungeonLevels.length} total levels`);
+
+    // Set up the dungeon at the starting level
+    state.dungeon = dungeonLevels[startLevel];
+    state.groundItems = state.groundItems || [];
+    state.maxLevels = dungeonLevels.length;
+    state.currentLevel = startLevel;
+    // DON'T clear entities - the engine already spawned monsters in createInitialState()
+    // state.entities = [];  // REMOVED - would delete all monsters!
+
+    // CRITICAL: Set the multiLevelDungeon property on the engine so handleStairsAction works
+    const multiLevelDungeon = {
+      levels: dungeonLevels,
+      stairPositions: stairPositions
+    };
+
+    // Access the private property via type assertion
+    (engine as any).multiLevelDungeon = multiLevelDungeon;
+
+    console.log(`[Main] Dungeon loaded: ${dungeonLevels.length} levels, starting at level ${startLevel}`);
+    console.log('[Main] multiLevelDungeon set on engine for stair navigation');
+    console.log('[Main] Stair positions:', stairPositions);
+    console.log(`[Main] Player will spawn at: (${spawnX}, ${spawnY})`);
+
+    // Store spawn point - will be used to reposition player after join
+    (window as any)._quickPlayDungeonSpawn = { x: spawnX, y: spawnY };
+
+    startGame(true, undefined, playerName, engine, `Quick Play: ${dungeon.name}`);
   }
 
   showLobby();
@@ -193,77 +359,129 @@ async function init() {
     const profile = metaGame.getProfile();
 
     app.innerHTML = `
-            <div id="lobby-ui" style="display: flex; flex-direction: column; align-items: center; justify-content: flex-start; min-height: 100%; font-family: 'Inter', sans-serif; background: #121212; color: #eee; padding: 2rem; box-sizing: border-box; overflow-y: auto;">
-                <h1 style="font-size: 3rem; margin-bottom: 2rem; background: linear-gradient(135deg, #fff 0%, #888 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ROGUEWAR P2P</h1>
+            <!-- TOP-LEVEL NAVIGATION -->
+            <nav id="top-nav" style="position: fixed; top: 0; left: 0; right: 0; z-index: 1000; background: #0a0a0a; border-bottom: 2px solid #333; display: flex; align-items: center; padding: 0 1rem; height: 50px;">
+                <div style="font-weight: bold; color: #888; margin-right: 2rem;">⚔️ ROGUEWAR</div>
+                <button class="top-nav-btn active" data-section="game" style="padding: 0.75rem 1.5rem; background: #2a2a3a; color: #fff; border: none; border-bottom: 3px solid #46a; cursor: pointer; font-weight: bold; margin-right: 0.5rem;">🎮 Game</button>
+                <button class="top-nav-btn" data-section="editors" style="padding: 0.75rem 1.5rem; background: #1a1a2a; color: #888; border: none; border-bottom: 3px solid transparent; cursor: pointer; font-weight: bold;">🛠️ Editors</button>
+            </nav>
+            
+            <!-- GAME SECTION -->
+            <div id="section-game" class="main-section" style="display: block; margin-top: 50px;">
+                <div id="lobby-ui" style="font-family: 'Inter', sans-serif; background: #121212; color: #eee; padding: 2rem; box-sizing: border-box; overflow-y: auto; height: calc(100vh - 50px); max-height: calc(100vh - 50px);">
+                <h1 style="font-size: 3rem; margin-bottom: 2rem; text-align: center; background: linear-gradient(135deg, #fff 0%, #888 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ROGUEWAR P2P</h1>
                 
-                <!-- META-GAME HEADER -->
-                <div style="background: #1e1e1e; padding: 1rem; border-radius: 8px; border: 1px solid #46a; margin-bottom: 2rem; width: 100%; max-width: 600px; display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <div style="font-size: 0.9rem; color: #888;">Welcome back,</div>
-                        <div style="font-size: 1.3rem; font-weight: bold; color: #46a;">${profile.displayName}</div>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <button id="btn-view-profile" style="padding: 0.6rem 1rem; background: #2a2a3a; color: #8af; border: 1px solid #46a; cursor: pointer; border-radius: 4px;">📊 Profile</button>
-                        <button id="btn-campaigns" style="padding: 0.6rem 1rem; background: #2a3a2a; color: #4f6; border: 1px solid #4a6; cursor: pointer; border-radius: 4px;">🗺️ Campaigns</button>
-                    </div>
-                </div>
-                
-                <!-- USER PROFILE -->
-                <div style="background: #1e1e1e; padding: 1.5rem; border-radius: 8px; border: 1px solid #333; margin-bottom: 2rem; width: 100%; max-width: 600px;">
-                    <h3 style="margin-top: 0; color: #aaa;">USER IDENTITY</h3>
-                    <div style="display: flex; gap: 1rem;">
-                        <input type="text" id="input-player-name" value="${playerName}" placeholder="Enter your name..." style="flex: 1; padding: 0.75rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;">
-                        <button id="btn-save-name" style="padding: 0.75rem 1.5rem; background: #3a3a3a; color: #fff; border: none; cursor: pointer; border-radius: 4px;">Save Name</button>
-                    </div>
-                </div>
-
-                <!-- ACTIONS SECTIONS -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; width: 100%; max-width: 800px; margin-bottom: 2rem;">
+                <!-- TWO COLUMN LAYOUT -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; max-width: 1400px; margin: 0 auto;">
                     
-                    <!-- HOST -->
-                    <div style="background: #1e1e1e; padding: 1.5rem; border-radius: 8px; border: 1px solid #333; display: flex; flex-direction: column; gap: 1rem;">
-                        <h3 style="margin-top: 0; color: #4a6;">HOST GAME</h3>
-                        <input type="text" id="input-game-name" placeholder="Game Name (Optional)" style="padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff;">
-                        <button id="btn-host" style="padding: 1rem; background: #2a3a2a; color: #fff; border: 1px solid #4a6; cursor: pointer; border-radius: 4px; font-weight: bold;">START HOSTING</button>
-                    </div>
+                    <!-- LEFT COLUMN: Profile & Saved Games -->
+                    <div style="display: flex; flex-direction: column; gap: 2rem;">
+                        
+                        <!-- META-GAME HEADER -->
+                        <div style="background: #1e1e1e; padding: 1rem; border-radius: 8px; border: 1px solid #46a; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="font-size: 0.9rem; color: #888;">Welcome back,</div>
+                                <div style="font-size: 1.3rem; font-weight: bold; color: #46a;">${profile.displayName}</div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button id="btn-view-profile" style="padding: 0.6rem 1rem; background: #2a2a3a; color: #8af; border: 1px solid #46a; cursor: pointer; border-radius: 4px;">📊 Profile</button>
+                                <button id="btn-campaigns" style="padding: 0.6rem 1rem; background: #2a3a2a; color: #4f6; border: 1px solid #4a6; cursor: pointer; border-radius: 4px;">🗺️ Campaigns</button>
+                            </div>
+                        </div>
+                        
+                        <!-- USER PROFILE -->
+                        <div style="background: #1e1e1e; padding: 1.5rem; border-radius: 8px; border: 1px solid #333;">
+                            <h3 style="margin-top: 0; color: #aaa;">USER IDENTITY</h3>
+                            <div style="display: flex; gap: 1rem;">
+                                <input type="text" id="input-player-name" value="${playerName}" placeholder="Enter your name..." style="flex: 1; padding: 0.75rem; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 4px;">
+                                <button id="btn-save-name" style="padding: 0.75rem 1.5rem; background: #3a3a3a; color: #fff; border: none; cursor: pointer; border-radius: 4px;">Save Name</button>
+                            </div>
+                        </div>
 
-                    <!-- JOIN / SPECTATE -->
-                    <div style="background: #1e1e1e; padding: 1.5rem; border-radius: 8px; border: 1px solid #333; display: flex; flex-direction: column; gap: 1rem;">
-                        <h3 style="margin-top: 0; color: #46a;">JOIN / SPECTATE</h3>
-                        <input type="text" id="input-host-id" placeholder="Game Name / Host ID" style="padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff;">
-                        <div style="display: flex; gap: 0.5rem;">
-                            <button id="btn-join" style="flex: 1; padding: 1rem; background: #2a2a3a; color: #fff; border: 1px solid #46a; cursor: pointer; border-radius: 4px; font-weight: bold;">JOIN</button>
-                            <button id="btn-spectate" style="flex: 1; padding: 1rem; background: #1a1a2a; color: #8af; border: 1px solid #346; cursor: pointer; border-radius: 4px; font-weight: bold;">SPECTATE</button>
+                        <!-- SAVED GAMES -->
+                        <div style="background: #1e1e1e; padding: 1.5rem; border-radius: 8px; border: 1px solid #333;">
+                            <h3 style="margin-top: 0; color: #a64;">SAVED GAMES / REPLAYS</h3>
+                            <div id="games-list" style="max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem;">
+                                ${games.length === 0 ? '<div style="color: #666; padding: 2rem; text-align: center;">No saved games found</div>' : ''}
+                            </div>
+                            <div style="border-top: 1px solid #333; padding-top: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                                <button id="btn-upload-trigger" style="padding: 0.5rem 1rem; background: #3a2a2a; color: #fff; border: 1px solid #a64; cursor: pointer; border-radius: 4px;">UPLOAD REPLAY JSON</button>
+                                <input type="file" id="file-upload" style="display: none;" accept=".json">
+                                <button id="btn-clear-all" style="padding: 0.5rem 1rem; border: none; background: transparent; color: #666; cursor: pointer;">Clear All Data</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- RIGHT COLUMN: Actions -->
+                    <div style="display: flex; flex-direction: column; gap: 2rem;">
+                        
+                        <!-- HOST -->
+                        <div style="background: #1e1e1e; padding: 1.5rem; border-radius: 8px; border: 1px solid #333; display: flex; flex-direction: column; gap: 1rem;">
+                            <h3 style="margin-top: 0; color: #4a6;">HOST GAME</h3>
+                            <input type="text" id="input-game-name" placeholder="Game Name (Optional)" style="padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff;">
+                            <button id="btn-host" style="padding: 1rem; background: #2a3a2a; color: #fff; border: 1px solid #4a6; cursor: pointer; border-radius: 4px; font-weight: bold;">START HOSTING</button>
+                        </div>
+
+                        <!-- JOIN / SPECTATE -->
+                        <div style="background: #1e1e1e; padding: 1.5rem; border-radius: 8px; border: 1px solid #333; display: flex; flex-direction: column; gap: 1rem;">
+                            <h3 style="margin-top: 0; color: #46a;">JOIN / SPECTATE</h3>
+                            <input type="text" id="input-host-id" placeholder="Game Name / Host ID" style="padding: 0.5rem; background: #2a2a2a; border: 1px solid #444; color: #fff;">
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button id="btn-join" style="flex: 1; padding: 1rem; background: #2a2a3a; color: #fff; border: 1px solid #46a; cursor: pointer; border-radius: 4px; font-weight: bold;">JOIN</button>
+                                <button id="btn-spectate" style="flex: 1; padding: 1rem; background: #1a1a2a; color: #8af; border: 1px solid #346; cursor: pointer; border-radius: 4px; font-weight: bold;">SPECTATE</button>
+                            </div>
+                        </div>
+                        
+                        <!-- QUICK PLAY - Test Levels from Editor -->
+                        <div style="background: #1e1e1e; padding: 1.5rem; border-radius: 8px; border: 1px solid #a4f;">
+                            <h3 style="margin-top: 0; color: #a4f;">⚡ QUICK PLAY - Test Your Levels</h3>
+                            <div style="color: #888; font-size: 0.9rem; margin-bottom: 1rem;">Play levels created in the Level Editor</div>
+                            <div id="quick-play-levels" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
+                                <div style="color: #666; padding: 1rem; text-align: center; width: 100%;">Loading levels...</div>
+                            </div>
+                            <div style="font-size: 0.8rem; color: #666; border-top: 1px solid #333; padding-top: 0.5rem;">
+                                💡 Create levels in the <a href="/tools/level-editor.html" style="color: #a4f;" target="_blank">Level Editor</a>
+                            </div>
                         </div>
                     </div>
                 </div>
-
-                <!-- QUICK PLAY - Test Levels from Editor -->
-                <div style="background: #1e1e1e; padding: 1.5rem; border-radius: 8px; border: 1px solid #a4f; width: 100%; max-width: 800px; margin-bottom: 2rem;">
-                    <h3 style="margin-top: 0; color: #a4f;">⚡ QUICK PLAY - Test Your Levels</h3>
-                    <div style="color: #888; font-size: 0.9rem; margin-bottom: 1rem;">Play levels created in the Level Editor</div>
-                    <div id="quick-play-levels" style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
-                        <div style="color: #666; padding: 1rem; text-align: center; width: 100%;">Loading levels...</div>
-                    </div>
-                    <div style="font-size: 0.8rem; color: #666; border-top: 1px solid #333; padding-top: 0.5rem;">
-                        💡 Create levels in the <a href="/tools/level-editor.html" style="color: #a4f;" target="_blank">Level Editor</a>
-                    </div>
-                </div>
-
-                <!-- SAVED GAMES -->
-                <div style="background: #1e1e1e; padding: 1.5rem; border-radius: 8px; border: 1px solid #333; width: 100%; max-width: 800px; margin-bottom: 2rem;">
-                    <h3 style="margin-top: 0; color: #a64;">SAVED GAMES / REPLAYS</h3>
-                    <div id="games-list" style="max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem;">
-                        ${games.length === 0 ? '<div style="color: #666; padding: 2rem; text-align: center;">No saved games found</div>' : ''}
-                    </div>
-                    <div style="border-top: 1px solid #333; padding-top: 1rem; display: flex; justify-content: space-between; align-items: center;">
-                        <button id="btn-upload-trigger" style="padding: 0.5rem 1rem; background: #3a2a2a; color: #fff; border: 1px solid #a64; cursor: pointer; border-radius: 4px;">UPLOAD REPLAY JSON</button>
-                        <input type="file" id="file-upload" style="display: none;" accept=".json">
-                        <button id="btn-clear-all" style="padding: 0.5rem 1rem; border: none; background: transparent; color: #666; cursor: pointer;">Clear All Data</button>
-                    </div>
-                </div>
+            </div>
+            </div>
+            
+            <!-- EDITORS SECTION -->
+            <div id="section-editors" class="main-section" style="display: none; margin-top: 50px; height: calc(100vh - 50px); overflow-y: auto;">
+                <div id="editors-root" style="height: 100%;"></div>
             </div>
         `;
+
+    // TAB SWITCHING LOGIC
+    let editorsInitialized = false;
+    document.querySelectorAll('.top-nav-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const section = (e.target as HTMLButtonElement).dataset.section;
+        if (!section) return;
+
+        // Update active button state
+        document.querySelectorAll('.top-nav-btn').forEach(b => {
+          const isActive = b.getAttribute('data-section') === section;
+          (b as HTMLElement).style.background = isActive ? '#2a2a3a' : '#1a1a2a';
+          (b as HTMLElement).style.color = isActive ? '#fff' : '#888';
+          (b as HTMLElement).style.borderBottom = isActive ? '3px solid #46a' : '3px solid transparent';
+        });
+
+        // Show/hide sections
+        document.getElementById('section-game')!.style.display = section === 'game' ? 'block' : 'none';
+        document.getElementById('section-editors')!.style.display = section === 'editors' ? 'block' : 'none';
+
+        // Initialize editors lazily on first switch
+        if (section === 'editors' && !editorsInitialized) {
+          editorsInitialized = true;
+          import('./editors/EditorsApp').then(module => {
+            new module.EditorsApp(document.getElementById('editors-root')!);
+          });
+        }
+      });
+    });
 
     // Populate Quick Play levels
     populateQuickPlayLevels();
@@ -321,31 +539,70 @@ async function init() {
     };
 
     (app.querySelector('#btn-campaigns') as HTMLElement).onclick = () => {
-      const campaigns = campaignManager.getAllCampaigns();
+      // Load campaigns directly from content library (getContentLibraryLevels only gets levels/dungeons)
+      const libraryJson = localStorage.getItem('roguewar_content_library');
+      const library = libraryJson ? JSON.parse(libraryJson) : [];
+      const campaigns = library
+        .filter((item: any) => item.type === 'campaign')
+        .map((item: any) => item.data);
+
+      console.log('[Main] Loaded campaigns from library:', campaigns.length, campaigns);
+
       if (campaigns.length === 0) {
-        alert('No campaigns available yet!');
+        alert('No campaigns available! Create one in the Campaign Editor.');
         return;
       }
-      // Show first campaign (tutorial for now)
+
+      // Show first campaign (or let user choose if multiple)
       const campaign = campaigns[0];
 
       // Initialize campaign progress if needed
       if (!profile.campaignProgress[campaign.id]) {
-        profile.campaignProgress[campaign.id] = campaignManager.initializeCampaignProgress(campaign.id);
+        // Create progress structure directly for library campaigns
+        const nodeProgress: any = {};
+        if (campaign.nodes) {
+          campaign.nodes.forEach((node: any) => {
+            nodeProgress[node.id] = { completed: false, unlocked: node.id === campaign.startNodeId };
+          });
+        }
+        profile.campaignProgress[campaign.id] = {
+          currentNodeId: campaign.startNodeId || (campaign.nodes?.[0]?.id),
+          completedNodes: [],
+          unlockedNodes: [campaign.startNodeId || campaign.nodes?.[0]?.id]
+        };
         metaGame.saveProfile();
+        console.log('[Main] Initialized campaign progress:', profile.campaignProgress[campaign.id]);
       }
 
       CampaignMapUI.show(campaign, profile, app, (nodeId) => {
-        // Start campaign node
-        const node = campaignManager.getNode(campaign.id, nodeId);
-        if (!node) return;
+        // Get node from the campaign data itself, not from campaignManager
+        const node = campaign.nodes?.find((n: any) => n.id === nodeId);
+        if (!node) {
+          console.error(`[Main] Node ${nodeId} not found in campaign`);
+          return;
+        }
 
-        // Merge node config with defaults
+        console.log('[Main] Starting campaign node:', node);
+
+        // Library campaigns use dungeonId to reference a dungeon in the library
+        // Load the dungeon data from the library
+        const libraryJson = localStorage.getItem('roguewar_content_library');
+        const library = libraryJson ? JSON.parse(libraryJson) : [];
+        const dungeonItem = library.find((item: any) => item.id === node.dungeonId);
+
+        if (!dungeonItem) {
+          alert(`Dungeon "${node.dungeonId}" not found in library! Create it in the Dungeon Editor first.`);
+          return;
+        }
+
+        console.log('[Main] Found dungeon for node:', dungeonItem.name, dungeonItem.data);
+
+        // Create a config for the engine - now using dungeon from library
         const config = {
-          ...node.dungeonConfig,
-          rngSeed: node.dungeonConfig.rngSeed || Date.now(),
-          dungeonSeed: node.dungeonConfig.dungeonSeed || Date.now(),
-          players: []
+          rngSeed: Date.now(),
+          dungeonSeed: Date.now(),
+          players: [],
+          customDungeon: dungeonItem.data
         };
 
         // Create a special engine for this campaign node with campaign context
@@ -353,9 +610,66 @@ async function init() {
           campaignId: campaign.id,
           nodeId: nodeId
         };
-        const engine = new HostEngine(config.dungeonSeed, config, registry, `${campaign.name}: ${node.name}`, campaignContext);
+        const nodeName = node.displayName || node.name || nodeId;
+        const engine = new HostEngine(config.dungeonSeed, config, registry, `${campaign.name}: ${nodeName}`, campaignContext);
 
-        startGame(true, undefined, playerName, engine, `${campaign.name}: ${node.name}`);
+        // Load dungeon levels into the engine (similar to Quick Play dungeon)
+        const dungeonData = dungeonItem.data;
+        const allContent = getContentLibraryLevels();
+
+        if (dungeonData.levels && dungeonData.levels.length > 0) {
+          const dungeonLevels: any[] = [];
+          const stairPositions: any = {};
+
+          for (let i = 0; i < dungeonData.levels.length; i++) {
+            const levelRef = dungeonData.levels[i];
+            const levelData = allContent.find(l => l.id === levelRef.levelId);
+
+            if (!levelData) {
+              console.warn(`[Main] Level ${levelRef.levelId} not found`);
+              continue;
+            }
+
+            const tiles = levelData.data.tiles.map((row: any[]) =>
+              row.map((tileType: string) => ({ type: tileType, seen: false }))
+            );
+            dungeonLevels.push(tiles);
+
+            // Scan for stair positions
+            let stairsUp: any, stairsDown: any, exit: any;
+            for (let y = 0; y < levelData.data.tiles.length; y++) {
+              for (let x = 0; x < levelData.data.tiles[y].length; x++) {
+                const tileType = levelData.data.tiles[y][x];
+                if (tileType === 'stairs_up') stairsUp = { x, y };
+                if (tileType === 'stairs_down') stairsDown = { x, y };
+                if (tileType === 'exit') exit = { x, y };
+              }
+            }
+            stairPositions[i] = { up: stairsUp, down: stairsDown, exit };
+          }
+
+          if (dungeonLevels.length > 0) {
+            const state = (engine as any).state;
+            state.dungeon = dungeonLevels[0];
+            state.groundItems = state.groundItems || [];
+            state.maxLevels = dungeonLevels.length;
+            state.currentLevel = 0;
+
+            (engine as any).multiLevelDungeon = {
+              levels: dungeonLevels,
+              stairPositions: stairPositions
+            };
+
+            // Get spawn from first level
+            const firstLevelRef = dungeonData.levels[0];
+            const firstLevelData = allContent.find(l => l.id === firstLevelRef.levelId);
+            if (firstLevelData?.data?.playerSpawn) {
+              (window as any)._quickPlayDungeonSpawn = firstLevelData.data.playerSpawn;
+            }
+          }
+        }
+
+        startGame(true, undefined, playerName, engine, `${campaign.name}: ${nodeName}`);
 
       }, showLobby);
     };

@@ -182,7 +182,18 @@ export class CanvasRenderer {
                 }
             }
 
-            this.ctx.fillRect(entity.pos.x * TILE_SIZE, entity.pos.y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            // Draw entity icon instead of colored rectangle
+            const icon = (entity as any).icon || (entity.type === EntityType.Player ? '🧙' : '👹');
+
+            // Draw icon as text centered in tile
+            this.ctx.font = `${TILE_SIZE * 0.8}px Arial`;
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText(
+                icon,
+                entity.pos.x * TILE_SIZE + TILE_SIZE / 2,
+                entity.pos.y * TILE_SIZE + TILE_SIZE / 2
+            );
 
             // Highlight Local Player
             if (localPlayerId && entity.id === localPlayerId) {

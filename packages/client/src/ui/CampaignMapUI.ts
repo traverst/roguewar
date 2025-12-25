@@ -34,10 +34,28 @@ export class CampaignMapUI {
         `;
 
         const progress = profile.campaignProgress[campaign.id];
-        const availableNodes = progress ?
-            campaignManager.getAvailableNodes(profile, campaign.id) : [];
-        const completionPercentage = progress ?
-            campaignManager.getCompletionPercentage(profile, campaign.id) : 0;
+
+        // Calculate available nodes directly from campaign data (not campaignManager which only has hardcoded campaigns)
+        const availableNodes: CampaignNode[] = [];
+        if (progress && campaign.nodes) {
+            campaign.nodes.forEach(node => {
+                // A node is available if it's unlocked and not completed
+                const isUnlocked = progress.unlockedNodes?.includes(node.id) || node.id === campaign.startNodeId;
+                const isCompleted = progress.completedNodes?.includes(node.id);
+                if (isUnlocked && !isCompleted) {
+                    availableNodes.push(node);
+                }
+            });
+        } else if (campaign.nodes) {
+            // No progress yet - first node is available
+            const startNode = campaign.nodes.find(n => n.id === campaign.startNodeId) || campaign.nodes[0];
+            if (startNode) availableNodes.push(startNode);
+        }
+
+        // Calculate completion percentage directly
+        const totalNodes = campaign.nodes?.length || 1;
+        const completedCount = progress?.completedNodes?.length || 0;
+        const completionPercentage = Math.round((completedCount / totalNodes) * 100);
 
         const header = document.createElement('div');
         header.style.cssText = `
@@ -85,12 +103,25 @@ export class CampaignMapUI {
             const status = isCompleted ? '✓ COMPLETED' : isAvailable ? '▶ AVAILABLE' : '🔒 LOCKED';
             const statusColor = isCompleted ? '#4f6' : isAvailable ? '#8af' : '#666';
 
+            // Look up the dungeon name from library
+            const dungeonId = (node as any).dungeonId;
+            const libraryJson = localStorage.getItem('roguewar_content_library');
+            const library = libraryJson ? JSON.parse(libraryJson) : [];
+            const dungeonItem = library.find((item: any) => item.id === dungeonId);
+            const dungeonName = dungeonItem?.name || dungeonId || 'Unknown Dungeon';
+
+            // Use displayName from Campaign Editor, OR the dungeon's actual name
+            const nodeName = (node as any).displayName !== 'Tutorial'
+                ? (node as any).displayName
+                : dungeonName;
+            const nodeDesc = dungeonItem ? `🏰 ${dungeonItem.data?.levels?.length || 1} level(s)` : '';
+
             nodeElement.innerHTML = `
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <div>
                         <div style="font-size: 0.85rem; color: ${statusColor}; margin-bottom: 5px;">${status}</div>
-                        <div style="font-weight: bold; font-size: 1.2rem; color: #fff;">${node.name}</div>
-                        <div style="color: #aaa; font-size: 0.9rem; margin-top: 5px;">${node.description || ''}</div>
+                        <div style="font-weight: bold; font-size: 1.2rem; color: #fff;">${nodeName}</div>
+                        <div style="color: #aaa; font-size: 0.9rem; margin-top: 5px;">${nodeDesc}</div>
                     </div>
                     ${isAvailable ? `<button class="start-node-btn" data-node-id="${node.id}" style="padding: 0.8rem 1.5rem; background: #2a3a4a; color: #fff; border: 1px solid #46a; cursor: pointer; border-radius: 4px; font-weight: bold;">START</button>` : ''}
                 </div>

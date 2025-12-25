@@ -53,11 +53,48 @@ export async function processRunCompletion(
 
     // Campaign completion
     if (campaignContext && runSummary.outcome === 'victory') {
-        campaignManager.completeNode(
-            profile,
-            campaignContext.campaignId,
-            campaignContext.nodeId
-        );
+        console.log('[RunCompletion] Processing campaign victory:', campaignContext);
+
+        // Update profile's campaign progress directly (works for both library and hardcoded campaigns)
+        const progress = profile.campaignProgress[campaignContext.campaignId];
+        if (progress) {
+            // Add node to completed list if not already there
+            if (!progress.completedNodes.includes(campaignContext.nodeId)) {
+                progress.completedNodes.push(campaignContext.nodeId);
+                console.log('[RunCompletion] Added node to completedNodes:', campaignContext.nodeId);
+            }
+
+            // Load campaign from library to find next nodes to unlock
+            const libraryJson = localStorage.getItem('roguewar_content_library');
+            const library = libraryJson ? JSON.parse(libraryJson) : [];
+            const campaignItem = library.find((item: any) => item.id === campaignContext.campaignId);
+
+            if (campaignItem) {
+                const campaign = campaignItem.data;
+                const completedNode = campaign.nodes?.find((n: any) => n.id === campaignContext.nodeId);
+
+                // Unlock next nodes
+                if (completedNode?.nextNodes) {
+                    completedNode.nextNodes.forEach((nextNodeId: string) => {
+                        if (!progress.unlockedNodes.includes(nextNodeId)) {
+                            progress.unlockedNodes.push(nextNodeId);
+                            console.log('[RunCompletion] Unlocked next node:', nextNodeId);
+                        }
+                    });
+                }
+            }
+        }
+
+        // Also try campaignManager for hardcoded campaigns (backward compatibility)
+        try {
+            campaignManager.completeNode(
+                profile,
+                campaignContext.campaignId,
+                campaignContext.nodeId
+            );
+        } catch (e) {
+            // Ignore - campaign not in campaignManager (probably a library campaign)
+        }
 
         const node = campaignManager.getNode(campaignContext.campaignId, campaignContext.nodeId);
         if (node && node.unlocksOnComplete.length > 0) {
