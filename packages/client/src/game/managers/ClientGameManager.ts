@@ -18,6 +18,7 @@ export class ClientGameManager {
     public connectedEntityIds: string[] = [];
     public onGameStateChanged: ((state: GameState, connectedIds: string[]) => void) | null = null;
     public onGameEnd: ((outcome: 'victory' | 'defeat') => void) | null = null;
+    public onInventoryUpdate: ((player: any) => void) | null = null;
 
     constructor(renderer: CanvasRenderer, input: InputManager, transport: Transport, registry: ModRegistry | null = null) {
         this.renderer = renderer;
@@ -173,5 +174,13 @@ export class ClientGameManager {
         }
 
         this.renderer.render(this.predictedState, this.localPlayerId);
+
+        // Update inventory UI if callback is set
+        if (this.onInventoryUpdate && this.localPlayerId) {
+            const player = this.predictedState.entities.find(e => e.id === this.localPlayerId);
+            if (player) {
+                this.onInventoryUpdate(player);
+            }
+        }
     }
 }

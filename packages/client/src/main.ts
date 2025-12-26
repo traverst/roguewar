@@ -218,14 +218,21 @@ async function init() {
 
         // Load items from level onto ground
         if (levelData.items && levelData.items.length > 0) {
-          state.groundItems = levelData.items.map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            icon: item.icon || '🎁',
-            x: item.x,
-            y: item.y
-          }));
-          console.log(`[Main] Loaded ${state.groundItems.length} items onto ground`);
+          state.groundItems = levelData.items.map((item: any) => {
+            // Enrich item with full data from ContentLibrary
+            const ContentLib = (window as any).ContentLibrary;
+            const itemData = ContentLib ? ContentLib.getItem(item.id) : null;
+            return {
+              id: item.id,
+              name: item.name,
+              icon: item.icon || '🎁',
+              x: item.x,
+              y: item.y,
+              // Include all item stats for combat
+              ...(itemData?.data || {})
+            };
+          });
+          console.log(`[Main] Loaded ${state.groundItems.length} items onto ground with full data`);
         } else {
           state.groundItems = [];
         }
@@ -1013,18 +1020,59 @@ async function init() {
     }
 
     app.innerHTML = '';
+
+    // Create flex container for game + inventory
+    const gameContainer = document.createElement('div');
+    gameContainer.style.cssText = 'display: flex; width: 100%; height: 100vh;';
+
+    // Create canvas container
+    const canvasContainer = document.createElement('div');
+    canvasContainer.style.cssText = 'flex: 1; position: relative;';
+
     const canvas = document.createElement('canvas');
     canvas.id = 'game-canvas';
-    canvas.width = window.innerWidth;
+    canvas.width = window.innerWidth - 250; // Reserve space for inventory
     canvas.height = window.innerHeight;
-    app.appendChild(canvas);
+    canvasContainer.appendChild(canvas);
+
+    // Create inventory sidebar container
+    const inventoryContainer = document.createElement('div');
+    inventoryContainer.id = 'inventory-sidebar';
+
+    gameContainer.appendChild(canvasContainer);
+    gameContainer.appendChild(inventoryContainer);
+    app.appendChild(gameContainer);
 
     const renderer = new CanvasRenderer(canvas);
     const input = new InputManager();
     const manager = new ClientGameManager(renderer, input, transport, registry);
 
+    // Create inventory UI
+    const { InventoryUI } = await import('./ui/InventoryUI');
+    const inventoryUI = new InventoryUI(inventoryContainer);
+
+    // Wire up inventory update callback
+    manager.onInventoryUpdate = (player) => {
+      inventoryUI.setPlayer(player);
+    };
+
+    // Wire up equip/unequip callbacks to send actions
+    inventoryUI.setCallbacks(
+      // onEquip
+      (itemId: string, slot: string) => {
+        console.log(`[Main] Equipping ${itemId} to ${slot}`);
+        input.nextAction = { type: 'equip_item' as any, actorId: '', payload: { itemId, slot } };
+      },
+      // onUnequip
+      (slot: string) => {
+        console.log(`[Main] Unequipping ${slot}`);
+        input.nextAction = { type: 'unequip_item' as any, actorId: '', payload: { slot } };
+      }
+    );
+
     // Expose for debugging
     (window as any).manager = manager;
+    (window as any).inventoryUI = inventoryUI;
 
     // Handle game end (victory/defeat)
     manager.onGameEnd = async (outcome) => {

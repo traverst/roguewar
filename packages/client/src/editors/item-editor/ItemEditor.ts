@@ -14,6 +14,11 @@ interface ItemTemplate {
     damageType?: 'slashing' | 'piercing' | 'bludgeoning' | 'fire' | 'ice' | 'lightning';
     attackSpeed?: 'slow' | 'normal' | 'fast';
 
+    // Armor effectiveness bonuses (e.g., piercing +3 vs light, +1 vs medium, +0 vs heavy)
+    lightArmorBonus?: number;
+    mediumArmorBonus?: number;
+    heavyArmorBonus?: number;
+
     // Armor-specific
     defense?: number;
     armorType?: 'light' | 'medium' | 'heavy';
@@ -26,6 +31,10 @@ interface ItemTemplate {
     // Quest-specific
     questItem?: boolean;
     questFlags?: string[];
+
+    // Custom properties for flexible bonuses/effects
+    // Can include: critBonus, speedBonus, lifestealBonus, poisonDamage, etc.
+    customProperties?: Record<string, any>;
 }
 
 export class ItemEditor {
@@ -83,29 +92,24 @@ export class ItemEditor {
                     </div>
                     
                     <div class="panel">
-                        <div class="panel-title">✨ Rarity</div>
-                        <div class="palette" style="grid-template-columns: repeat(2, 1fr);">
-                            <div class="palette-item ${this.item.rarity === 'common' ? 'active' : ''}" data-rarity="common">
-                                <div class="palette-icon" style="color: #aaa;">⭐</div>
-                                <div style="font-size: 0.7rem;">Common</div>
-                            </div>
-                            <div class="palette-item ${this.item.rarity === 'uncommon' ? 'active' : ''}" data-rarity="uncommon">
-                                <div class="palette-icon" style="color: #1eff00;">⭐⭐</div>
-                                <div style="font-size: 0.7rem;">Uncommon</div>
-                            </div>
-                            <div class="palette-item ${this.item.rarity === 'rare' ? 'active' : ''}" data-rarity="rare">
-                                <div class="palette-icon" style="color: #0070dd;">⭐⭐⭐</div>
-                                <div style="font-size: 0.7rem;">Rare</div>
-                            </div>
-                            <div class="palette-item ${this.item.rarity === 'epic' ? 'active' : ''}" data-rarity="epic">
-                                <div class="palette-icon" style="color: #a335ee;">⭐⭐⭐⭐</div>
-                                <div style="font-size: 0.7rem;">Epic</div>
-                            </div>
-                            <div class="palette-item ${this.item.rarity === 'legendary' ? 'active' : ''}" data-rarity="legendary">
-                                <div class="palette-icon" style="color: #ff8000;">⭐⭐⭐⭐⭐</div>
-                                <div style="font-size: 0.7rem;">Legendary</div>
-                            </div>
+                        <div class="form-group">
+                            <label class="form-label">Rarity</label>
+                            <select class="form-select" id="item-rarity">
+                                <option value="common" ${this.item.rarity === 'common' ? 'selected' : ''}>⭐ Common</option>
+                                <option value="uncommon" ${this.item.rarity === 'uncommon' ? 'selected' : ''}>⭐⭐ Uncommon</option>
+                                <option value="rare" ${this.item.rarity === 'rare' ? 'selected' : ''}>⭐⭐⭐ Rare</option>
+                                <option value="epic" ${this.item.rarity === 'epic' ? 'selected' : ''}>⭐⭐⭐⭐ Epic</option>
+                                <option value="legendary" ${this.item.rarity === 'legendary' ? 'selected' : ''}>⭐⭐⭐⭐⭐ Legendary</option>
+                            </select>
                         </div>
+                    </div>
+                    
+                    <div class="panel">
+                        <div class="panel-title">⚡ Custom Bonuses</div>
+                        <div style="color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 0.5rem;">
+                            Select bonus effects for this item
+                        </div>
+                        ${this.renderCustomBonusList()}
                     </div>
                 </div>
                 
@@ -174,6 +178,39 @@ export class ItemEditor {
         console.log('[ItemEditor] renderLibrary complete');
     }
 
+    private renderCustomBonusList(): string {
+        // Predefined bonus types with their default values
+        const bonusTypes = [
+            { key: 'critBonus', label: '💥 Critical Hit', min: 0, max: 50, default: 0 },
+            { key: 'speedBonus', label: '⚡ Speed', min: -5, max: 10, default: 0 },
+            { key: 'lifestealBonus', label: '🩸 Lifesteal', min: 0, max: 30, default: 0 },
+            { key: 'dodgeBonus', label: '🌊 Dodge', min: 0, max: 40, default: 0 },
+            { key: 'regenerationBonus', label: '💚 Regeneration', min: 0, max: 10, default: 0 },
+        ];
+
+        const customProps = this.item.customProperties || {};
+
+        return bonusTypes.map(bonus => {
+            const value = customProps[bonus.key] || bonus.default;
+            return `
+                <div class="form-group" style="margin-bottom: 0.75rem;">
+                    <label class="form-label">
+                        ${bonus.label}
+                        <span class="slider-value" id="${bonus.key}-value">${value}</span>
+                    </label>
+                    <input 
+                        type="range" 
+                        class="form-slider custom-bonus-slider" 
+                        data-bonus-key="${bonus.key}"
+                        min="${bonus.min}" 
+                        max="${bonus.max}" 
+                        value="${value}" 
+                    />
+                </div>
+            `;
+        }).join('');
+    }
+
     private renderTypeSpecificPanel(): string {
         switch (this.item.type) {
             case 'weapon':
@@ -204,6 +241,29 @@ export class ItemEditor {
                             <option value="normal" ${this.item.attackSpeed === 'normal' ? 'selected' : ''}>🚶 Normal</option>
                             <option value="fast" ${this.item.attackSpeed === 'fast' ? 'selected' : ''}>⚡ Fast</option>
                         </select>
+                    </div>
+                    
+                    <div class="panel-title" style="margin-top: 1rem;">🎯 Armor Effectiveness</div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            vs Light Armor Bonus
+                            <span class="slider-value" id="light-bonus-value">${this.item.lightArmorBonus || 0}</span>
+                        </label>
+                        <input type="range" class="form-slider" id="light-armor-bonus" min="-5" max="10" value="${this.item.lightArmorBonus || 0}" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            vs Medium Armor Bonus
+                            <span class="slider-value" id="medium-bonus-value">${this.item.mediumArmorBonus || 0}</span>
+                        </label>
+                        <input type="range" class="form-slider" id="medium-armor-bonus" min="-5" max="10" value="${this.item.mediumArmorBonus || 0}" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            vs Heavy Armor Bonus
+                            <span class="slider-value" id="heavy-bonus-value">${this.item.heavyArmorBonus || 0}</span>
+                        </label>
+                        <input type="range" class="form-slider" id="heavy-armor-bonus" min="-5" max="10" value="${this.item.heavyArmorBonus || 0}" />
                     </div>
                 `;
             case 'armor':
@@ -364,13 +424,27 @@ export class ItemEditor {
         // Type-specific sliders and selects
         this.attachTypeSpecificListeners();
 
-        // Rarity selector
-        const rarityItems = document.querySelectorAll('[data-rarity]');
-        rarityItems.forEach(item => {
-            item.addEventListener('click', () => {
-                rarityItems.forEach(i => i.classList.remove('active'));
-                item.classList.add('active');
-                this.item.rarity = item.getAttribute('data-rarity') as ItemTemplate['rarity'];
+        // Rarity dropdown
+        document.getElementById('item-rarity')?.addEventListener('change', (e) => {
+            this.item.rarity = (e.target as HTMLSelectElement).value as ItemTemplate['rarity'];
+            this.updatePreview();
+        });
+
+        // Custom bonus sliders
+        document.querySelectorAll('.custom-bonus-slider').forEach(slider => {
+            slider.addEventListener('input', (e) => {
+                const key = (slider as HTMLElement).dataset.bonusKey || '';
+                const value = parseInt((slider as HTMLInputElement).value);
+
+                if (!this.item.customProperties) {
+                    this.item.customProperties = {};
+                }
+                this.item.customProperties[key] = value;
+
+                // Update value display
+                const valueSpan = document.getElementById(`${key}-value`);
+                if (valueSpan) valueSpan.textContent = value.toString();
+
                 this.updatePreview();
             });
         });
@@ -399,6 +473,31 @@ export class ItemEditor {
 
         document.getElementById('weapon-speed')?.addEventListener('change', (e) => {
             this.item.attackSpeed = (e.target as HTMLSelectElement).value as ItemTemplate['attackSpeed'];
+            this.updatePreview();
+        });
+
+        // Armor effectiveness bonuses
+        const lightArmorBonus = document.getElementById('light-armor-bonus') as HTMLInputElement;
+        lightArmorBonus?.addEventListener('input', () => {
+            this.item.lightArmorBonus = parseInt(lightArmorBonus.value);
+            const valueSpan = document.getElementById('light-bonus-value');
+            if (valueSpan) valueSpan.textContent = lightArmorBonus.value;
+            this.updatePreview();
+        });
+
+        const mediumArmorBonus = document.getElementById('medium-armor-bonus') as HTMLInputElement;
+        mediumArmorBonus?.addEventListener('input', () => {
+            this.item.mediumArmorBonus = parseInt(mediumArmorBonus.value);
+            const valueSpan = document.getElementById('medium-bonus-value');
+            if (valueSpan) valueSpan.textContent = mediumArmorBonus.value;
+            this.updatePreview();
+        });
+
+        const heavyArmorBonus = document.getElementById('heavy-armor-bonus') as HTMLInputElement;
+        heavyArmorBonus?.addEventListener('input', () => {
+            this.item.heavyArmorBonus = parseInt(heavyArmorBonus.value);
+            const valueSpan = document.getElementById('heavy-bonus-value');
+            if (valueSpan) valueSpan.textContent = heavyArmorBonus.value;
             this.updatePreview();
         });
 

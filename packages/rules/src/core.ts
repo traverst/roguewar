@@ -3,6 +3,8 @@ import { mulberry32 } from './rng';
 import { ModRegistry } from './mods';
 import { addItem, removeItem } from './inventory';
 import { equipItem, unequipItem, getDefaultSlot } from './equipment';
+import { resolveAttack, applyTurnStartEffects } from './combat/combatEngine';
+import { DEFAULT_STAT_DEFINITIONS } from './combat/statDefinitions';
 
 // Helper to deep clone state (essential for pure functions)
 function cloneState(state: GameState): GameState {
@@ -73,13 +75,21 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
             if (target) {
                 // Combat
                 if (actor.type !== target.type) {
-                    target.hp -= actor.attack;
-                    events.push({ type: 'attacked', attackerId: actor.id, targetId: target.id, damage: actor.attack });
+                    // Use data-driven combat engine
+                    const combatResult = resolveAttack(actor, target, DEFAULT_STAT_DEFINITIONS);
+                    target.hp -= combatResult.damage;
+
+                    // Add combat events
+                    events.push({
+                        type: 'attacked',
+                        attackerId: actor.id,
+                        targetId: target.id,
+                        damage: combatResult.damage
+                    });
+                    events.push(...combatResult.events as any[]);
+
                     if (target.hp <= 0) {
                         events.push({ type: 'killed', entityId: target.id });
-                        // Remove entity? or just keep with 0 hp?
-                        // Filter dead entities at end of turn usually, or flag them.
-                        // For now, let's keep them in array but validMove checks hp > 0.
                     }
                 }
             } else {
@@ -159,43 +169,123 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
             }
         }
 
-        else if (action.type === 'equip_item' && actor.inventory && actor.equipment) {
-            const { slotIndex } = action.payload || {};
-            if (slotIndex !== undefined && slotIndex < actor.inventory.slots.length) {
-                const invSlot = actor.inventory.slots[slotIndex];
-                const itemDef = registry?.getItem(invSlot.itemId);
-                if (itemDef) {
-                    const equipSlot = getDefaultSlot(itemDef);
-                    if (equipSlot) {
-                        // Remove from inventory
-                        const newInventory = removeItem(actor.inventory, slotIndex, 1);
-                        if (newInventory) {
-                            actor.inventory = newInventory;
-                            // If slot has item, swap to inventory
-                            const currentEquipped = actor.equipment.slots[equipSlot];
-                            if (currentEquipped) {
-                                actor.inventory = addItem(actor.inventory, currentEquipped, 1, false) || actor.inventory;
+        else if (action.type === 'equip_item') {
+            console.log('[Core] 🎒 Processing equip_item action:', action.payload);
+            const { itemId, slot, slotIndex } = action.payload || {};
+
+            // Support two formats: {itemId, slot} from UI or {slotIndex} from old code
+            if (itemId && slot) {
+                console.log('[Core] Using new format - itemId:', itemId, 'slot:', slot);
+                // New format from InventoryUI: find item by ID in inventory
+                const inventory = (actor as any).inventory;
+                const equipment = (actor as any).equipment || { slots: {} };
+
+                if (!inventory) return;
+
+                const itemSlotIndex = inventory.slots.findIndex((s: any) => s.itemId === itemId);
+                console.log('[Core] Found item at index:', itemSlotIndex);
+
+                if (itemSlotIndex >= 0) {
+                    const item = inventory.slots[itemSlotIndex];
+
+                    // If something is already equipped in this slot, swap it to inventory
+                    if (equipment.slots && equipment.slots[slot]) {
+                        const currentEquipped = equipment.slots[slot];
+                        console.log('[Core] Swapping out:', currentEquipped);
+                        // If currentEquipped is an object, add it properly, otherwise create object
+                        if (typeof currentEquipped === 'string') {
+                            inventory.slots.push({
+                                itemId: currentEquipped,
+                                name: currentEquipped,
+                                quantity: 1
+                            });
+                        } else {
+                            inventory.slots.push(currentEquipped);
+                        }
+                    }
+
+                    // Remove item from inventory
+                    inventory.slots.splice(itemSlotIndex, 1);
+
+                    // Equip item - store complete item data including stats
+                    if (!equipment.slots) equipment.slots = {};
+                    // Copy all data from inventory item to equipment slot
+                    equipment.slots[slot] = { ...item };
+
+                    (actor as any).equipment = equipment;
+                    events.push({ type: 'item_equip' as any, entityId: actor.id, itemId, slot });
+
+                    console.log(`[Core] ✅ Equipped ${item.name || itemId} to ${slot}`);
+                } else {
+                    console.warn('[Core] Item not found in inventory:', itemId);
+                }
+            } else if (slotIndex !== undefined && (actor as any).inventory && (actor as any).equipment) {
+                // Old format support
+                const inventory = (actor as any).inventory;
+                const equipment = (actor as any).equipment;
+
+                if (slotIndex < inventory.slots.length) {
+                    const invSlot = inventory.slots[slotIndex];
+                    const itemDef = registry?.getItem(invSlot.itemId);
+                    if (itemDef) {
+                        const equipSlot = getDefaultSlot(itemDef);
+                        if (equipSlot) {
+                            // Remove from inventory
+                            const newInventory = removeItem(inventory, slotIndex, 1);
+                            if (newInventory) {
+                                (actor as any).inventory = newInventory;
+                                // If slot has item, swap to inventory
+                                const currentEquipped = equipment.slots[equipSlot];
+                                if (currentEquipped) {
+                                    (actor as any).inventory = addItem((actor as any).inventory, currentEquipped, 1, false) || (actor as any).inventory;
+                                }
+                                // Equip new item
+                                (actor as any).equipment = equipItem(equipment, equipSlot, invSlot.itemId);
+                                events.push({ type: 'item_equip' as any, entityId: actor.id, itemId: invSlot.itemId, slot: equipSlot });
                             }
-                            // Equip new item
-                            actor.equipment = equipItem(actor.equipment, equipSlot, invSlot.itemId);
-                            events.push({ type: 'item_equip' as any, entityId: actor.id, itemId: invSlot.itemId, slot: equipSlot });
                         }
                     }
                 }
             }
         }
 
-        else if (action.type === 'unequip_item' && actor.inventory && actor.equipment) {
+        else if (action.type === 'unequip_item') {
             const { slot } = action.payload || {};
-            if (slot && actor.equipment.slots[slot as EquipSlot]) {
-                const itemId = actor.equipment.slots[slot as EquipSlot]!;
-                // Add to inventory
-                const newInventory = addItem(actor.inventory, itemId, 1, false);
-                if (newInventory) {
-                    actor.inventory = newInventory;
-                    actor.equipment = unequipItem(actor.equipment, slot as EquipSlot);
-                    events.push({ type: 'item_unequip' as any, entityId: actor.id, itemId, slot });
+            const inventory = (actor as any).inventory;
+            const equipment = (actor as any).equipment;
+
+            if (slot && equipment?.slots && equipment.slots[slot]) {
+                const equippedItem = equipment.slots[slot];
+
+                // Add item back to inventory (handle both object and string formats)
+                if (typeof equippedItem === 'object') {
+                    // New format: full item object
+                    inventory.slots.push({
+                        itemId: equippedItem.itemId,
+                        name: equippedItem.name || equippedItem.itemId,
+                        icon: equippedItem.icon || '🎁',
+                        quantity: 1
+                    });
+                } else {
+                    // Legacy format: just itemId string
+                    inventory.slots.push({
+                        itemId: equippedItem,
+                        name: equippedItem,
+                        quantity: 1
+                    });
                 }
+
+                // Remove from equipment
+                delete equipment.slots[slot];
+
+                events.push({
+                    type: 'item_unequip' as any,
+                    entityId: actor.id,
+                    itemId: typeof equippedItem === 'object' ? equippedItem.itemId : equippedItem,
+                    slot
+                });
+
+                console.log(`[Core] ✅ Unequipped ${typeof equippedItem === 'object' ? equippedItem.name : equippedItem} from ${slot}`);
             }
         }
 
