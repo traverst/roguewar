@@ -138,18 +138,25 @@ export class CanvasRenderer {
 
         // Draw ground items (only if visible)
         if (state.groundItems) {
-            state.groundItems.forEach(item => {
-                const visibility = visMap ? getTileVisibility(visMap, item.pos.x, item.pos.y) : 'visible_now';
-                if (visibility === 'visible_now') {
-                    this.ctx.fillStyle = COLOR_GROUND_ITEM;
-                    const size = TILE_SIZE * 0.5;
-                    const offset = (TILE_SIZE - size) / 2;
-                    this.ctx.fillRect(item.pos.x * TILE_SIZE + offset, item.pos.y * TILE_SIZE + offset, size, size);
+            state.groundItems.forEach((item: any) => {
+                // Support both formats: {pos: {x, y}} and {x, y}
+                const x = item.pos?.x ?? item.x;
+                const y = item.pos?.y ?? item.y;
 
-                    // Item indicator
-                    this.ctx.fillStyle = '#fff';
-                    this.ctx.font = 'bold 10px monospace';
-                    this.ctx.fillText('!', item.pos.x * TILE_SIZE + 10, item.pos.y * TILE_SIZE + 15);
+                const visibility = visMap ? getTileVisibility(visMap, x, y) : 'visible_now';
+                if (visibility === 'visible_now') {
+                    // Draw background glow
+                    this.ctx.fillStyle = COLOR_GROUND_ITEM;
+                    const size = TILE_SIZE * 0.7;
+                    const offset = (TILE_SIZE - size) / 2;
+                    this.ctx.fillRect(x * TILE_SIZE + offset, y * TILE_SIZE + offset, size, size);
+
+                    // Draw item icon
+                    const icon = item.icon || '!';
+                    this.ctx.font = `${TILE_SIZE * 0.6}px Arial`;
+                    this.ctx.textAlign = 'center';
+                    this.ctx.textBaseline = 'middle';
+                    this.ctx.fillText(icon, x * TILE_SIZE + TILE_SIZE / 2, y * TILE_SIZE + TILE_SIZE / 2);
                 }
             });
         }

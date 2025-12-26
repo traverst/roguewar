@@ -3,7 +3,7 @@ import type { TileType } from '@roguewar/rules';
 import { ContentLibrary } from '../utils/ContentLibrary';
 import { TabbedLibrary } from '../utils/TabbedLibrary';
 
-type ToolType = TileType | 'player_spawn' | 'enemy_spawn';
+type ToolType = TileType | 'player_spawn' | 'enemy_spawn' | 'item' | 'exit';
 
 export class LevelEditor {
     private canvas!: HTMLCanvasElement;
@@ -19,7 +19,8 @@ export class LevelEditor {
     private isDrawing = false;
     private activeLibraryTab: 'levels' | 'entities' | 'items' = 'levels';
     private selectedEntity: { id: string; name: string } | null = null;
-    private selectedItem: { id: string; name: string } | null = null;
+    private selectedItem: { id: string; name: string; icon?: string } | null = null;
+    private placedItems: { id: string; name: string; icon?: string; x: number; y: number }[] = [];
     private sidebarTab: 'generation' | 'properties' | 'actions' = 'generation';
 
     // Level metadata properties
@@ -129,6 +130,14 @@ export class LevelEditor {
                     <div class="palette-item" data-tool="enemy_spawn" style="background-color: #FF4500;">
                         <div class="palette-icon">E</div>
                         <div>Enemy</div>
+                    </div>
+                    <div class="palette-item" data-tool="item" style="background-color: #9932CC;">
+                        <div class="palette-icon">🎁</div>
+                        <div>Item</div>
+                    </div>
+                    <div class="palette-item" data-tool="exit" style="background-color: #00ff00;">
+                        <div class="palette-icon">★</div>
+                        <div>Exit</div>
                     </div>
                 </div>
             </div>
@@ -303,6 +312,7 @@ export class LevelEditor {
                 this.playerSpawn = level.playerSpawn || { x: 5, y: 5 };
                 this.enemySpawns = level.enemySpawns || [];
                 this.placedEntities = level.placedEntities || [];
+                this.placedItems = level.items || [];
 
                 // Re-initialize tiles if empty
                 if (this.tiles.length === 0) {
@@ -322,9 +332,10 @@ export class LevelEditor {
                 break;
 
             case 'items':
-                this.selectedItem = { id: item.data.id, name: item.name };
+                this.selectedItem = { id: item.data.id, name: item.name, icon: item.data.icon || '🎁' };
                 this.selectedEntity = null;
-                this.showMessage(`✅ Selected item: <strong>${this.selectedItem.name}</strong><br/>Click grid to place loot (coming soon)`);
+                this.currentTool = 'item'; // Switch to item tool automatically
+                this.showMessage(`✅ Selected item: <strong>${this.selectedItem.name}</strong> ${this.selectedItem.icon}<br/>Click grid to place item`);
                 break;
         }
     }
@@ -429,6 +440,7 @@ export class LevelEditor {
             playerSpawn: this.playerSpawn,
             enemySpawns: this.enemySpawns,
             placedEntities: this.placedEntities,
+            items: this.placedItems, // Add placed items to level data
             description: this.levelDesc
         };
 
@@ -611,9 +623,26 @@ export class LevelEditor {
             return;
         }
 
-        // If item is selected (future feature)
-        if (this.selectedItem) {
-            this.showMessage(`⚠️ Item placement coming soon!`);
+        // If item is selected and currentTool is 'item', place on the map
+        if (this.selectedItem && this.currentTool === 'item') {
+            // Check if there's already an item at this position
+            const existingIndex = this.placedItems.findIndex(i => i.x === x && i.y === y);
+            if (existingIndex >= 0) {
+                // Remove existing item
+                this.placedItems.splice(existingIndex, 1);
+                this.showMessage(`🗑️ Removed item at (${x}, ${y})`);
+            } else {
+                // Add new item
+                this.placedItems.push({
+                    id: this.selectedItem.id,
+                    name: this.selectedItem.name,
+                    icon: this.selectedItem.icon,
+                    x,
+                    y
+                });
+                this.showMessage(`🎁 Placed ${this.selectedItem.name} at (${x}, ${y})`);
+            }
+            this.drawGrid();
             return;
         }
 
@@ -699,6 +728,29 @@ export class LevelEditor {
                 );
                 this.ctx.fillStyle = '#FF4500'; // Reset color
             }
+        });
+
+        // Draw placed items
+        this.placedItems.forEach(item => {
+            // Draw purple background for item
+            this.ctx.fillStyle = '#9932CC';
+            this.ctx.fillRect(
+                item.x * this.tileSize + 2,
+                item.y * this.tileSize + 2,
+                this.tileSize - 4,
+                this.tileSize - 4
+            );
+
+            // Draw item icon
+            const icon = item.icon || '🎁';
+            this.ctx.font = `${this.tileSize * 0.7}px Arial`;
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText(
+                icon,
+                item.x * this.tileSize + this.tileSize / 2,
+                item.y * this.tileSize + this.tileSize / 2
+            );
         });
 
         // Draw stairs symbols on top to make them more visible
@@ -880,7 +932,8 @@ export class LevelEditor {
             height: this.height,
             tiles: this.tiles,
             playerSpawn: this.playerSpawn,
-            enemySpawns: this.enemySpawns
+            enemySpawns: this.enemySpawns,
+            items: this.placedItems as any // Add placed items to export
         };
 
         const result = validateDungeon(dungeon);

@@ -206,25 +206,38 @@ async function init() {
     const engine = new HostEngine(config.dungeonSeed, config, registry, `Quick Play: ${level.name}`);
 
     // Override the dungeon with the level's tiles
+    // IMPORTANT: Must access engine's internal state directly - getState() returns a clone!
     try {
-      if (levelData.tiles && engine.getState) {
-        const state = engine.getState();
+      if (levelData.tiles && levelData.tiles.length > 0) {
+        const state = (engine as any).state; // Access internal state directly
+
         // Inject the level's tiles
-        if (levelData.tiles.length > 0) {
-          state.dungeon = levelData.tiles.map((row: any[]) =>
-            row.map(tileType => ({ type: tileType, seen: false }))
-          );
-          // Set groundItems array for Phase 11a
+        state.dungeon = levelData.tiles.map((row: any[]) =>
+          row.map(tileType => ({ type: tileType, seen: false }))
+        );
+
+        // Load items from level onto ground
+        if (levelData.items && levelData.items.length > 0) {
+          state.groundItems = levelData.items.map((item: any) => ({
+            id: item.id,
+            name: item.name,
+            icon: item.icon || '🎁',
+            x: item.x,
+            y: item.y
+          }));
+          console.log(`[Main] Loaded ${state.groundItems.length} items onto ground`);
+        } else {
           state.groundItems = [];
-          // Update dimensions
-          state.maxLevels = 1;
-          state.currentLevel = 0;
-
-          // Clear existing entities - player will spawn when they join
-          state.entities = [];
-
-          console.log(`[Main] Level tiles injected, player will spawn at ${spawnX}, ${spawnY}`);
         }
+
+        // Update dimensions
+        state.maxLevels = 1;
+        state.currentLevel = 0;
+
+        // Clear existing entities - player will spawn when they join
+        state.entities = [];
+
+        console.log(`[Main] Level tiles injected into engine, player will spawn at ${spawnX}, ${spawnY}`);
       }
     } catch (e) {
       console.warn('[Main] Could not inject custom level tiles:', e);

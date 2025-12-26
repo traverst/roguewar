@@ -88,6 +88,43 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
                     actor.pos.x = targetX;
                     actor.pos.y = targetY;
                     events.push({ type: 'moved', entityId: actor.id, from: { x: actor.pos.x - dx, y: actor.pos.y - dy }, to: { x: actor.pos.x, y: actor.pos.y } });
+
+                    // Auto-pickup: check if there's an item at the new position
+                    if (state.groundItems) {
+                        const itemIndex = state.groundItems.findIndex((item: any) => {
+                            const ix = item.pos?.x ?? item.x;
+                            const iy = item.pos?.y ?? item.y;
+                            return ix === targetX && iy === targetY;
+                        });
+
+                        if (itemIndex >= 0) {
+                            const groundItem = state.groundItems[itemIndex];
+
+                            // Initialize inventory if needed
+                            if (!actor.inventory) {
+                                actor.inventory = { slots: [], equipment: {} };
+                            }
+
+                            // Add item to inventory
+                            actor.inventory.slots.push({
+                                itemId: groundItem.id,
+                                name: groundItem.name,
+                                icon: groundItem.icon || '🎁',
+                                quantity: 1
+                            });
+
+                            // Remove from ground
+                            state.groundItems.splice(itemIndex, 1);
+
+                            events.push({
+                                type: 'item_pickup' as any,
+                                entityId: actor.id,
+                                itemId: groundItem.id,
+                                itemName: groundItem.name,
+                                itemIcon: groundItem.icon
+                            });
+                        }
+                    }
                 }
             }
         } else if (action.type === 'wait') {
@@ -188,27 +225,40 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
     // 1.5 Handle Join Action
     if (action.type === 'join') {
         if (!state.entities.find(e => e.id === action.actorId)) {
-            // Find valid spawn deterministically
-            // Scan for first free floor tile from (5,5)
+            // Check for spawn hint from Quick Play or Campaign
+            const spawnHint = (typeof window !== 'undefined')
+                ? (window as any)._quickPlaySpawnHint || (window as any)._quickPlayDungeonSpawn
+                : null;
+
             let spawnX = 5;
             let spawnY = 5;
             let found = false;
 
-            // Pseudo-random offset based on actorId length to prevent stacking
-            const offset = action.actorId.length * 7;
+            // If there's a spawn hint, use it directly
+            if (spawnHint && spawnHint.x !== undefined && spawnHint.y !== undefined) {
+                spawnX = spawnHint.x;
+                spawnY = spawnHint.y;
+                found = true;
+                console.log(`[Core] Using spawn hint: (${spawnX}, ${spawnY})`);
+            } else {
+                // Find valid spawn deterministically
+                // Scan for first free floor tile from (5,5)
+                // Pseudo-random offset based on actorId length to prevent stacking
+                const offset = action.actorId.length * 7;
 
-            for (let y = 2; y < 48; y++) {
-                for (let x = 2; x < 48; x++) {
-                    const cx = (x + offset) % 46 + 2;
-                    const cy = (y + offset) % 46 + 2; // Keep away from edges
-                    if (state.dungeon[cy][cx].type === 'floor' && !getEntityAt(state, cx, cy)) {
-                        spawnX = cx;
-                        spawnY = cy;
-                        found = true;
-                        break;
+                for (let y = 2; y < 48; y++) {
+                    for (let x = 2; x < 48; x++) {
+                        const cx = (x + offset) % 46 + 2;
+                        const cy = (y + offset) % 46 + 2; // Keep away from edges
+                        if (state.dungeon[cy][cx].type === 'floor' && !getEntityAt(state, cx, cy)) {
+                            spawnX = cx;
+                            spawnY = cy;
+                            found = true;
+                            break;
+                        }
                     }
+                    if (found) break;
                 }
-                if (found) break;
             }
 
             const templateId = action.payload?.templateId || (action.actorId.startsWith('ai-') ? 'core:goblin' : 'core:player');
