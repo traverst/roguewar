@@ -44,8 +44,14 @@ async function init() {
 
   function deriveHostId(name: string): string {
     const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-    const randomSuffix = Math.random().toString(36).substring(2, 6);
-    return `roguewar-${slug}-${randomSuffix}`;
+    // Use deterministic hash so clients can join by game name
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = ((hash << 5) - hash) + name.charCodeAt(i);
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    const suffix = Math.abs(hash).toString(36).substring(0, 4);
+    return `roguewar-${slug}-${suffix}`;
   }
 
   function resolveTargetId(input: string): string {
@@ -910,7 +916,12 @@ async function init() {
     app.innerHTML = '<div id="status">Connecting...</div>';
     const transport = new PeerTransport(console.log);
     try {
-      await transport.spectate(targetId);
+      // Use connect() for join mode, spectate() for spectate mode
+      if (mode === 'join') {
+        await transport.connect(targetId, playerName);
+      } else {
+        await transport.spectate(targetId);
+      }
     } catch (e) {
       alert("Failed to connect: " + e);
       window.location.reload();
@@ -918,14 +929,43 @@ async function init() {
     }
 
     app.innerHTML = '';
+
+    // Create flex container for game + inventory (like startGame does)
+    const gameContainer = document.createElement('div');
+    gameContainer.style.cssText = 'display: flex; width: 100%; height: 100vh;';
+
+    // Create canvas container
+    const canvasContainer = document.createElement('div');
+    canvasContainer.style.cssText = 'flex: 1; position: relative;';
+
     const canvas = document.createElement('canvas');
     canvas.id = 'game-canvas';
-    canvas.width = window.innerWidth;
+    canvas.width = mode === 'join' ? window.innerWidth - 250 : window.innerWidth; // Reserve space for inventory if joining
     canvas.height = window.innerHeight;
-    app.appendChild(canvas);
+    canvasContainer.appendChild(canvas);
+    gameContainer.appendChild(canvasContainer);
 
-    // Initial HUD
-    createHUD("Spectator", targetId);
+    // Create inventory sidebar for join mode
+    let inventoryUI: any = null;
+    let combatLog: any = null;
+    if (mode === 'join') {
+      const inventoryContainer = document.createElement('div');
+      inventoryContainer.id = 'inventory-sidebar';
+      gameContainer.appendChild(inventoryContainer);
+
+      const { InventoryUI } = await import('./ui/InventoryUI');
+      inventoryUI = new InventoryUI(inventoryContainer);
+
+      // Create combat log for join mode
+      const { CombatLog } = await import('./ui/CombatLog');
+      combatLog = new CombatLog();
+      (window as any).combatLog = combatLog;
+    }
+
+    app.appendChild(gameContainer);
+
+    // Initial HUD - use "Client" for join mode, "Spectator" for spectate
+    createHUD(mode === 'join' ? "Client" : "Spectator", targetId, mode === 'join' ? playerName : undefined);
 
     const renderer = new CanvasRenderer(canvas);
     const input = new InputManager();
@@ -933,6 +973,43 @@ async function init() {
 
     // Expose for debugging
     (window as any).manager = manager;
+
+    // Wire up combat log to receive events from deltas (for join mode)
+    if (mode === 'join' && combatLog) {
+      const originalHandleDelta = (manager as any).handleDelta.bind(manager);
+      (manager as any).handleDelta = (delta: any) => {
+        originalHandleDelta(delta);
+
+        // Process combat events from delta
+        if (delta.events) {
+          delta.events.forEach((event: any) => {
+            if (event.type === 'attacked') {
+              const attackerName = event.attackerName || event.attackerId || 'Unknown';
+              const targetName = event.targetName || event.targetId || 'Unknown';
+
+              combatLog.logAttack(
+                attackerName,
+                targetName,
+                event.attackRoll || 0,
+                event.targetAC || 0,
+                event.hit,
+                event.critical || false,
+                event.fumble || false
+              );
+
+              if (event.hit && event.damage > 0) {
+                combatLog.logDamage(targetName, event.damage);
+              }
+            }
+
+            if (event.type === 'killed') {
+              const entityName = event.entityName || event.entityId || 'Unknown';
+              combatLog.addMessage(`💀 ${entityName} has been slain!`, 'death');
+            }
+          });
+        }
+      };
+    }
 
     // Create spectator controls if in spectator mode
     let updatePlayerList: (() => void) | null = null;
@@ -1001,6 +1078,14 @@ async function init() {
       // Update spectator list if in spectate mode
       if (updatePlayerList) {
         updatePlayerList();
+      }
+
+      // Update inventory for join mode
+      if (mode === 'join' && inventoryUI && state) {
+        const player = state.entities?.find((e: any) => e.id === playerName || e.name === playerName);
+        if (player) {
+          inventoryUI.setPlayer(player);
+        }
       }
 
       // Handle join mode logic

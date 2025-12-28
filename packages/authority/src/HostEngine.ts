@@ -383,8 +383,9 @@ export class HostEngine {
 
         console.log('[HostEngine] Finished static enemies');
 
-        // Then process registered AI players
-        this.processAIActions();
+        // Then process registered AI players and capture their events
+        const aiPlayerEvents = this.processAIActions();
+        events.push(...aiPlayerEvents);
 
         // Advance turn once after all actors have had a chance to act
         this.state = advanceTurn(this.state);
@@ -467,8 +468,9 @@ export class HostEngine {
      * Process all AI player actions.
      * Called after each human action to give AI a chance to react.
      */
-    private processAIActions(): void {
+    private processAIActions(): GameEvent[] {
         const deadAis: string[] = [];
+        const allEvents: GameEvent[] = [];
 
         for (const [aiId, bot] of this.aiPlayers) {
             // Prune dead AI entities
@@ -485,9 +487,12 @@ export class HostEngine {
             // AI decides action
             const aiAction = bot.decide(perception);
 
-            // Process AI action through rules (same as human)
-            const { nextState } = resolveTurn(this.state, aiAction);
+            // Process AI action through rules AND capture events
+            const { nextState, events } = resolveTurn(this.state, aiAction);
             this.state = nextState;
+
+            // Add combat events to collection
+            allEvents.push(...events);
 
             // Store AI behavior on entity for visualization AFTER state update
             if ('debugBehavior' in aiAction) {
@@ -502,6 +507,8 @@ export class HostEngine {
         for (const id of deadAis) {
             this.aiPlayers.delete(id);
         }
+
+        return allEvents;
     }
 
     /**
