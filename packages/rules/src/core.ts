@@ -50,9 +50,16 @@ function removeGroundItem(state: GameState, itemId: string): void {
     }
 }
 
-function createGroundItem(state: GameState, itemId: string, pos: Position, quantity: number = 1): GroundItem {
+function createGroundItem(state: GameState, itemId: string, pos: Position, quantity: number = 1, itemData?: any): GroundItem {
     const id = `ground_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const groundItem: GroundItem = { id, itemId, pos: { ...pos }, quantity };
+    // Preserve all item data (name, icon, type, stats, etc.) when dropping
+    const groundItem: GroundItem = {
+        id,
+        itemId,
+        pos: { ...pos },
+        quantity,
+        ...(itemData || {})  // Spread full item data onto ground item
+    };
     if (!state.groundItems) state.groundItems = [];
     state.groundItems.push(groundItem);
     return groundItem;
@@ -79,17 +86,50 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
                     const combatResult = resolveAttack(actor, target, DEFAULT_STAT_DEFINITIONS);
                     target.hp -= combatResult.damage;
 
-                    // Add combat events
-                    events.push({
+                    // Add combat events with full details for combat log
+                    const combatEvent = combatResult.events.find((e: any) => e.type === 'damage' || e.type === 'critical_hit');
+                    const attackedEvent = {
                         type: 'attacked',
                         attackerId: actor.id,
+                        attackerName: actor.name || actor.id,
                         targetId: target.id,
-                        damage: combatResult.damage
-                    });
+                        targetName: target.name || target.id,
+                        damage: combatResult.damage,
+                        attackRoll: combatEvent?.attackRoll,
+                        targetAC: combatEvent?.targetAC,
+                        hit: !(combatEvent?.miss),
+                        critical: combatEvent?.type === 'critical_hit',
+                        fumble: combatEvent?.fumble
+                    };
+                    console.log('[Core] ATTACK EVENT:', attackedEvent);
+                    events.push(attackedEvent);
                     events.push(...combatResult.events as any[]);
 
                     if (target.hp <= 0) {
-                        events.push({ type: 'killed', entityId: target.id });
+                        events.push({ type: 'killed', entityId: target.id, entityName: target.name || target.id });
+
+                        // Drop loot when enemy dies - inventory items and equipped items
+                        const lootItems = [
+                            ...(target.inventory?.slots || []),
+                            ...Object.values(target.equipment?.slots || {}).filter(Boolean)
+                        ];
+
+                        for (const item of lootItems) {
+                            if (item) {
+                                const itemId = (item as any).itemId || (item as any).id;
+                                // Pass full item data so dropped loot keeps name, icon, type, stats
+                                const { quantity: _q, itemId: _id, ...restItemData } = item as any;
+                                console.log('[Core] LOOT DROP - item:', item, 'restItemData:', restItemData);
+                                // Mark as loot so renderer shows 🎁 until picked up
+                                createGroundItem(state, itemId, target.pos, 1, { ...restItemData, isLoot: true });
+                                events.push({
+                                    type: 'item_drop' as any,
+                                    entityId: target.id,
+                                    itemId,
+                                    quantity: 1
+                                });
+                            }
+                        }
                     }
                 }
             } else {
@@ -99,32 +139,35 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
                     actor.pos.y = targetY;
                     events.push({ type: 'moved', entityId: actor.id, from: { x: actor.pos.x - dx, y: actor.pos.y - dy }, to: { x: actor.pos.x, y: actor.pos.y } });
 
-                    // Auto-pickup: check if there's an item at the new position
+                    // Auto-pickup: check for ALL items at the new position
                     if (state.groundItems) {
-                        const itemIndex = state.groundItems.findIndex((item: any) => {
+                        // Find all items at this position
+                        const itemsAtPos = state.groundItems.filter((item: any) => {
                             const ix = item.pos?.x ?? item.x;
                             const iy = item.pos?.y ?? item.y;
                             return ix === targetX && iy === targetY;
                         });
 
-                        if (itemIndex >= 0) {
-                            const groundItem = state.groundItems[itemIndex];
-
+                        // Pick up each item
+                        for (const groundItem of itemsAtPos) {
                             // Initialize inventory if needed
                             if (!actor.inventory) {
                                 actor.inventory = { slots: [], equipment: {} };
                             }
 
-                            // Add item to inventory
+                            // Add item to inventory - strip ground-only fields (pos, id, isLoot)
+                            const { x, y, id, pos, isLoot, ...itemData } = groundItem as any;
                             actor.inventory.slots.push({
-                                itemId: groundItem.id,
-                                name: groundItem.name,
-                                icon: groundItem.icon || '🎁',
+                                itemId: id,         // Rename id to itemId for inventory
+                                ...itemData,        // All other item data (damage, defence, customProperties, etc.)
                                 quantity: 1
                             });
 
+                            console.log('[Core] Picked up item with data:', actor.inventory.slots[actor.inventory.slots.length - 1]);
+
                             // Remove from ground
-                            state.groundItems.splice(itemIndex, 1);
+                            const idx = state.groundItems.indexOf(groundItem);
+                            if (idx >= 0) state.groundItems.splice(idx, 1);
 
                             events.push({
                                 type: 'item_pickup' as any,
@@ -163,7 +206,9 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
                 const newInventory = removeItem(actor.inventory, slotIndex, slot.quantity);
                 if (newInventory) {
                     actor.inventory = newInventory;
-                    createGroundItem(state, slot.itemId, actor.pos, slot.quantity);
+                    // Pass full slot data so dropped item keeps name, icon, type, stats, etc.
+                    const { quantity, itemId, ...restSlotData } = slot;
+                    createGroundItem(state, itemId, actor.pos, quantity, restSlotData);
                     events.push({ type: 'item_drop' as any, entityId: actor.id, itemId: slot.itemId, quantity: slot.quantity });
                 }
             }
@@ -207,15 +252,24 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
                     // Remove item from inventory
                     inventory.slots.splice(itemSlotIndex, 1);
 
-                    // Equip item - store complete item data including stats
+                    // Equip item - enrich with full data from ContentLibrary
                     if (!equipment.slots) equipment.slots = {};
-                    // Copy all data from inventory item to equipment slot
-                    equipment.slots[slot] = { ...item };
+
+                    // Look up item data from ContentLibrary to get stats
+                    const ContentLib = (typeof window !== 'undefined') ? (window as any).ContentLibrary : null;
+                    const itemData = ContentLib ? ContentLib.getItem(item.itemId) : null;
+
+                    // Combine inventory item with library data
+                    equipment.slots[slot] = {
+                        ...item,                    // itemId, name, icon, quantity from inventory
+                        ...(itemData?.data || {})   // damage, defence, customProperties, etc. from library
+                    };
+
+                    console.log('[Core] ✅ Equipped', item.name || itemId, 'with data:', equipment.slots[slot]);
 
                     (actor as any).equipment = equipment;
                     events.push({ type: 'item_equip' as any, entityId: actor.id, itemId, slot });
 
-                    console.log(`[Core] ✅ Equipped ${item.name || itemId} to ${slot}`);
                 } else {
                     console.warn('[Core] Item not found in inventory:', itemId);
                 }
@@ -367,7 +421,15 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
                     pos: { x: spawnX, y: spawnY },
                     hp: 100,
                     maxHp: 100,
-                    attack: 10
+                    attack: 0,  // Base attack bonus (before equipment)
+                    defense: 10,  // Base AC (lower is better, armor subtracts)
+                    // D&D Ability Scores
+                    strength: 12,      // Affects melee damage (+1 modifier)
+                    dexterity: 14,     // Affects AC and attack rolls (+2 modifier)
+                    constitution: 13,  // Affects HP (+1 modifier)
+                    intelligence: 10,  // Future: spells, skills (0 modifier)
+                    wisdom: 11,        // Future: perception, willpower (+0 modifier)
+                    charisma: 10   // Future: social, leadership (0 modifier)
                 };
             }
 

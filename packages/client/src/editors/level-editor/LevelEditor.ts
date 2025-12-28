@@ -439,8 +439,8 @@ export class LevelEditor {
             tiles: this.tiles,
             playerSpawn: this.playerSpawn,
             enemySpawns: this.enemySpawns,
-            placedEntities: this.placedEntities,
-            items: this.placedItems, // Add placed items to level data
+            entities: this.placedEntities,  // Changed from placedEntities to entities
+            items: this.placedItems, // Save items with ONLY id, x, y
             description: this.levelDesc
         };
 

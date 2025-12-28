@@ -13,14 +13,16 @@ interface ItemTemplate {
     damage?: number;
     damageType?: 'slashing' | 'piercing' | 'bludgeoning' | 'fire' | 'ice' | 'lightning';
     attackSpeed?: 'slow' | 'normal' | 'fast';
+    attackBonus?: number;  // Bonus to attack roll (+1, +2, etc.)
 
     // Armor effectiveness bonuses (e.g., piercing +3 vs light, +1 vs medium, +0 vs heavy)
     lightArmorBonus?: number;
     mediumArmorBonus?: number;
     heavyArmorBonus?: number;
 
-    // Armor-specific
-    defense?: number;
+    // Armor-specific (D&D 5e style: AC = 10 + armorBonus + magicBonus + dexMod)
+    armorBonus?: number;   // Base AC bonus from armor type (Light +2, Medium +4, Heavy +6)
+    magicBonus?: number;   // Magic enhancement bonus (+1, +2, +3, etc.)
     armorType?: 'light' | 'medium' | 'heavy';
 
     // Consumable-specific
@@ -215,13 +217,25 @@ export class ItemEditor {
         switch (this.item.type) {
             case 'weapon':
                 return `
-                    <div class="panel-title">⚔️ Weapon Properties</div>
+                    <div class="panel-title">⚔️ D20 Combat Properties</div>
+                    <div class="form-group">
+                        <label class="form-label">Damage Dice (e.g. 1d8, 2d6+2)</label>
+                        <input type="text" class="form-input" id="weapon-damage-dice" placeholder="1d8" value="${this.item.damage || '1d6'}" />
+                        <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <button class="preset-btn" data-dice="1d4" style="padding: 0.4rem 0.8rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; color: var(--text-primary); font-size: 0.85rem;">1d4</button>
+                            <button class="preset-btn" data-dice="1d6" style="padding: 0.4rem 0.8rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; color: var(--text-primary); font-size: 0.85rem;">1d6</button>
+                            <button class="preset-btn" data-dice="1d8" style="padding: 0.4rem 0.8rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; color: var(--text-primary); font-size: 0.85rem;">1d8</button>
+                            <button class="preset-btn" data-dice="1d10" style="padding: 0.4rem 0.8rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; color: var(--text-primary); font-size: 0.85rem;">1d10</button>
+                            <button class="preset-btn" data-dice="1d12" style="padding: 0.4rem 0.8rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; color: var(--text-primary); font-size: 0.85rem;">1d12</button>
+                            <button class="preset-btn" data-dice="2d6" style="padding: 0.4rem 0.8rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; color: var(--text-primary); font-size: 0.85rem;">2d6</button>
+                        </div>
+                    </div>
                     <div class="form-group">
                         <label class="form-label">
-                            Damage
-                            <span class="slider-value" id="damage-value">${this.item.damage || 10}</span>
+                            Attack Bonus (to-hit)
+                            <span class="slider-value" id="attack-bonus-value">${this.item.attackBonus || 0}</span>
                         </label>
-                        <input type="range" class="form-slider" id="weapon-damage" min="1" max="100" value="${this.item.damage || 10}" />
+                        <input type="range" class="form-slider" id="weapon-attack-bonus" min="0" max="5" value="${this.item.attackBonus || 0}" />
                     </div>
                     <div class="form-group">
                         <label class="form-label">Damage Type</label>
@@ -268,13 +282,20 @@ export class ItemEditor {
                 `;
             case 'armor':
                 return `
-                    <div class="panel-title">🛡️ Armor Properties</div>
+                    <div class="panel-title">🛡️ Armor Properties (AC = 10 + Armor + Magic + Dex)</div>
                     <div class="form-group">
                         <label class="form-label">
-                            Defense
-                            <span class="slider-value" id="defense-value">${this.item.defense || 5}</span>
+                            Armor Bonus (Light +2, Medium +4, Heavy +6)
+                            <span class="slider-value" id="armor-bonus-value">${this.item.armorBonus || 0}</span>
                         </label>
-                        <input type="range" class="form-slider" id="armor-defense" min="1" max="50" value="${this.item.defense || 5}" />
+                        <input type="range" class="form-slider" id="armor-bonus" min="0" max="8" value="${this.item.armorBonus || 0}" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            Magic Bonus (+1, +2, +3, etc.)
+                            <span class="slider-value" id="magic-bonus-value">${this.item.magicBonus || 0}</span>
+                        </label>
+                        <input type="range" class="form-slider" id="magic-bonus" min="0" max="5" value="${this.item.magicBonus || 0}" />
                     </div>
                     <div class="form-group">
                         <label class="form-label">Armor Type</label>
@@ -283,6 +304,9 @@ export class ItemEditor {
                             <option value="medium" ${this.item.armorType === 'medium' ? 'selected' : ''}>⚙️ Medium</option>
                             <option value="heavy" ${this.item.armorType === 'heavy' ? 'selected' : ''}>🛡️ Heavy</option>
                         </select>
+                    </div>
+                    <div style="padding: var(--spacing-md); background: var(--bg-tertiary); border-radius: var(--radius-sm); font-size: 0.875rem; color: var(--text-secondary);">
+                        💡 Final AC = 10 + ${this.item.armorBonus || 0} + ${this.item.magicBonus || 0} + Dex = <strong>${10 + (this.item.armorBonus || 0) + (this.item.magicBonus || 0)}</strong> (+ Dex modifier)
                     </div>
                 `;
             case 'consumable':
@@ -346,7 +370,7 @@ export class ItemEditor {
                 `;
             case 'armor':
                 return `
-                    <strong>Defense:</strong> ${this.item.defense}<br/>
+                    <strong>AC Bonus:</strong> +${(this.item.armorBonus || 0) + (this.item.magicBonus || 0)} (Armor: +${this.item.armorBonus || 0}, Magic: +${this.item.magicBonus || 0})<br/>
                     <strong>Type:</strong> ${this.item.armorType}
                 `;
             case 'consumable':
@@ -372,7 +396,8 @@ export class ItemEditor {
             delete this.item.damage;
             delete this.item.damageType;
             delete this.item.attackSpeed;
-            delete this.item.defense;
+            delete this.item.armorBonus;
+            delete this.item.magicBonus;
             delete this.item.armorType;
             delete this.item.healAmount;
             delete this.item.manaAmount;
@@ -457,12 +482,32 @@ export class ItemEditor {
     }
 
     private attachTypeSpecificListeners(): void {
-        // Weapon
-        const weaponDamage = document.getElementById('weapon-damage') as HTMLInputElement;
-        weaponDamage?.addEventListener('input', () => {
-            this.item.damage = parseInt(weaponDamage.value);
-            const valueSpan = document.getElementById('damage-value');
-            if (valueSpan) valueSpan.textContent = weaponDamage.value;
+        // Weapon - Damage Dice (text input)
+        const weaponDamageDice = document.getElementById('weapon-damage-dice') as HTMLInputElement;
+        weaponDamageDice?.addEventListener('input', () => {
+            this.item.damage = weaponDamageDice.value;
+            this.updatePreview();
+        });
+
+        // Preset buttons for common dice
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const dice = (e.target as HTMLElement).getAttribute('data-dice');
+                if (dice && weaponDamageDice) {
+                    weaponDamageDice.value = dice;
+                    this.item.damage = dice;
+                    this.updatePreview();
+                }
+            });
+        });
+
+        // Weapon - Attack Bonus (slider)
+        const weaponAttackBonus = document.getElementById('weapon-attack-bonus') as HTMLInputElement;
+        weaponAttackBonus?.addEventListener('input', () => {
+            this.item.attackBonus = parseInt(weaponAttackBonus.value);
+            const valueSpan = document.getElementById('attack-bonus-value');
+            if (valueSpan) valueSpan.textContent = weaponAttackBonus.value;
             this.updatePreview();
         });
 
@@ -501,12 +546,20 @@ export class ItemEditor {
             this.updatePreview();
         });
 
-        // Armor
-        const armorDefense = document.getElementById('armor-defense') as HTMLInputElement;
-        armorDefense?.addEventListener('input', () => {
-            this.item.defense = parseInt(armorDefense.value);
-            const valueSpan = document.getElementById('defense-value');
-            if (valueSpan) valueSpan.textContent = armorDefense.value;
+        // Armor bonuses
+        const armorBonusSlider = document.getElementById('armor-bonus') as HTMLInputElement;
+        armorBonusSlider?.addEventListener('input', () => {
+            this.item.armorBonus = parseInt(armorBonusSlider.value);
+            const valueSpan = document.getElementById('armor-bonus-value');
+            if (valueSpan) valueSpan.textContent = armorBonusSlider.value;
+            this.updatePreview();
+        });
+
+        const magicBonusSlider = document.getElementById('magic-bonus') as HTMLInputElement;
+        magicBonusSlider?.addEventListener('input', () => {
+            this.item.magicBonus = parseInt(magicBonusSlider.value);
+            const valueSpan = document.getElementById('magic-bonus-value');
+            if (valueSpan) valueSpan.textContent = magicBonusSlider.value;
             this.updatePreview();
         });
 

@@ -17,6 +17,7 @@ import { ProfileUI } from './ui/ProfileUI';
 import { CampaignMapUI } from './ui/CampaignMapUI';
 import { UnlockNotification } from './ui/UnlockNotification';
 import { processRunCompletion } from './meta/runCompletion';
+import { ContentLibrary } from './editors/utils/ContentLibrary';
 
 declare global {
   interface Window { isJoinRequested: boolean; triggerJoinUI: () => void; }
@@ -218,21 +219,27 @@ async function init() {
 
         // Load items from level onto ground
         if (levelData.items && levelData.items.length > 0) {
+          console.log('[Main] Loading items from level:', levelData.items);
+
           state.groundItems = levelData.items.map((item: any) => {
-            // Enrich item with full data from ContentLibrary
-            const ContentLib = (window as any).ContentLibrary;
-            const itemData = ContentLib ? ContentLib.getItem(item.id) : null;
+            // Look up current item data from ContentLibrary by ID
+            const itemData = ContentLibrary.getItem(item.id);
+
+            if (!itemData) {
+              console.warn(`[Main] Item ${item.id} not found in ContentLibrary!`);
+              return null;
+            }
+
+            // Combine position from level with current data from library
             return {
-              id: item.id,
-              name: item.name,
-              icon: item.icon || '🎁',
-              x: item.x,
-              y: item.y,
-              // Include all item stats for combat
-              ...(itemData?.data || {})
+              ...itemData.data,  // All current stats from library (damage, attackBonus, etc.)
+              id: item.id,       // Ensure ID is present
+              x: item.x,         // Position from level
+              y: item.y
             };
-          });
-          console.log(`[Main] Loaded ${state.groundItems.length} items onto ground with full data`);
+          }).filter(Boolean); // Remove null items
+
+          console.log(`[Main] Loaded ${state.groundItems.length} items with current data from ContentLibrary`);
         } else {
           state.groundItems = [];
         }
@@ -244,7 +251,43 @@ async function init() {
         // Clear existing entities - player will spawn when they join
         state.entities = [];
 
-        console.log(`[Main] Level tiles injected into engine, player will spawn at ${spawnX}, ${spawnY}`);
+        // Load entities from level data and enrich from ContentLibrary
+        if (levelData.entities && levelData.entities.length > 0) {
+          console.log('[Main] Loading entities from level:', levelData.entities);
+          console.log('[Main] Enemy spawns from level:', levelData.enemySpawns);
+
+          // Use enemySpawns as primary source - each spawn is a unique entity instance
+          const spawns = levelData.enemySpawns || [];
+          state.entities = spawns.map((spawn: any, index: number) => {
+            // Look up current entity data from ContentLibrary by ID
+            const entityId = spawn.entityId || spawn.id;
+            const entityData = ContentLibrary.getItem(entityId);
+
+            if (!entityData) {
+              console.warn(`[Main] Entity ${entityId} not found in ContentLibrary!`);
+              return null;
+            }
+
+            // Create unique instance ID for each spawn
+            const instanceId = `${entityId}_${index}_${Date.now()}`;
+
+            // Merge template data with spawn position
+            return {
+              ...entityData.data,      // All current stats from library (hp, attack, aiBehavior, etc.)
+              type: entityData.data.type || 'enemy',  // Ensure type is set for AI recognition
+              id: instanceId,          // Unique ID for each instance
+              templateId: entityId,    // Original template reference
+              name: spawn.name || entityData.data.name || entityData.name,
+              pos: { x: spawn.x, y: spawn.y },  // Position from spawn
+            };
+          }).filter(Boolean); // Remove null entities
+
+          console.log('[Main] Entities enriched from library:', state.entities);
+        }
+        console.log(`[Main] Loaded ${state.entities.length} entities from level data`);
+
+        console.log(`[Main] Level tiles injected into engine, player will spawn at ${spawnX}, ${spawnY}`)
+          ;
       }
     } catch (e) {
       console.warn('[Main] Could not inject custom level tiles:', e);
@@ -1051,12 +1094,81 @@ async function init() {
     const { InventoryUI } = await import('./ui/InventoryUI');
     const inventoryUI = new InventoryUI(inventoryContainer);
 
+    // Create combat log UI (will be added to HUD later)
+    const { CombatLog } = await import('./ui/CombatLog');
+    const combatLog = new CombatLog();
+    (window as any).combatLog = combatLog;  // Store for HUD to access
+
     // Wire up inventory update callback
     manager.onInventoryUpdate = (player) => {
-      inventoryUI.setPlayer(player);
+      inventoryUI.setPlayer(player); // setPlayer already calls render internally
     };
 
-    // Wire up equip/unequip callbacks to send actions
+    // Wire up combat log to receive events from deltas
+    const originalHandleDelta = manager.handleDelta.bind(manager);
+    manager.handleDelta = (delta: any) => {
+      console.log('[Main] !!!! handleDelta override called !!!!', delta);
+      originalHandleDelta(delta);
+
+      console.log('[Main] Delta received, events:', delta.events);
+
+      // Process combat events from delta
+      if (delta.events) {
+        delta.events.forEach((event: any) => {
+          console.log('[Main] Processing event type:', event.type);
+          // Listen for 'attacked' events which core.ts generates with attack info
+          if (event.type === 'attacked') {
+            console.log('[Main] Found attacked event!', event);
+
+            // Use names directly from event (more reliable than entity lookup)
+            const attackerName = event.attackerName || event.attackerId || 'Unknown';
+            const targetName = event.targetName || event.targetId || 'Unknown';
+
+            console.log('[Main] Attack details:', {
+              attackerName,
+              targetName,
+              attackRoll: event.attackRoll,
+              targetAC: event.targetAC,
+              hit: event.hit,
+              damage: event.damage
+            });
+
+            combatLog.logAttack(
+              attackerName,
+              targetName,
+              event.attackRoll || 0,
+              event.targetAC || 0,
+              event.hit,  // use hit flag from event
+              event.critical || false,
+              event.fumble || false
+            );
+
+            if (event.hit && event.damage > 0) {
+              console.log('[Main] Logging damage:', targetName, event.damage);
+              combatLog.logDamage(targetName, event.damage);
+            }
+          }
+
+          // Handle death events
+          if (event.type === 'killed') {
+            console.log('[Main] Entity killed event:', event.entityId, event.entityName);
+            // Use name from event (entity may already be removed from state)
+            const entityName = event.entityName || event.entityId || 'Unknown';
+            combatLog.addMessage(`💀 ${entityName} has been slain!`, 'death');
+          }
+        });
+      }
+    };
+
+    // Wire up state update callback to refresh stats after combat
+    manager.onStateUpdate = (state) => {
+      const player = state.entities.find((e: any) => e.type === 'player');
+      if (player) {
+        inventoryUI.setPlayer(player);
+      }
+    };
+
+    // Wire up equip/unequip/drop callbacks to send actions
     inventoryUI.setCallbacks(
       // onEquip
       (itemId: string, slot: string) => {
@@ -1067,12 +1179,18 @@ async function init() {
       (slot: string) => {
         console.log(`[Main] Unequipping ${slot}`);
         input.nextAction = { type: 'unequip_item' as any, actorId: '', payload: { slot } };
+      },
+      // onDrop
+      (itemIndex: number) => {
+        console.log(`[Main] Dropping item at index ${itemIndex}`);
+        input.nextAction = { type: 'drop_item' as any, actorId: '', payload: { slotIndex: itemIndex } };
       }
     );
 
     // Expose for debugging
     (window as any).manager = manager;
     (window as any).inventoryUI = inventoryUI;
+    (window as any).combatLog = combatLog;
 
     // Handle game end (victory/defeat)
     manager.onGameEnd = async (outcome) => {
@@ -1174,10 +1292,18 @@ async function init() {
     }
 
     content += '<button id="btn-quit" style="margin-top: 10px; padding: 5px 10px; background: #a33; border: none; color: white; border-radius: 4px; cursor: pointer; width: 100%;">Quit to Lobby</button>';
-    content += '<div style="margin-top: 10px; font-size: 0.75rem; color: #888; border-top: 1px solid #444; padding-top: 5px;">WASD: Move | Space: Wait<br/>. or &gt;: Stairs | Q: Quit</div>';
 
     hud.innerHTML = content;
     app.appendChild(hud);
+
+    // Append combat log to HUD panel
+    console.log('[Main] createHUD: Checking for combatLog...', (window as any).combatLog);
+    if ((window as any).combatLog) {
+      console.log('[Main] createHUD: Appending combatLog to HUD');
+      hud.appendChild((window as any).combatLog.getElement());
+    } else {
+      console.warn('[Main] createHUD: combatLog not found on window!');
+    }
 
     // Update level indicator
     setInterval(() => {

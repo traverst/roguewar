@@ -1,10 +1,11 @@
 /**
- * Generic Combat Engine
- * Data-driven combat resolution using stat definitions
+ * D20 Combat Engine
+ * Dice-based combat resolution using D&D-style mechanics
  */
 
 import { StatDefinition, CombatResult, CombatEvent } from './statDefinitions';
 import { evaluateFormula } from './formulaEvaluator';
+import { rollDice, getAbilityModifier } from './diceRoller';
 import {
     getEffectiveStats,
     calculateEffectiveStat,
@@ -13,7 +14,7 @@ import {
 } from './combatHelpers';
 
 /**
- * Resolve an attack between two entities using stat definitions
+ * Resolve an attack between two entities using D20 system
  * @param attacker - The attacking entity
  * @param target - The target entity
  * @param statDefs - Stat definition map
@@ -26,120 +27,165 @@ export function resolveAttack(
 ): CombatResult {
     const events: CombatEvent[] = [];
 
-    // 1. Calculate base damage from attack stat
-    let damage = calculateEffectiveStat(attacker, 'attack', statDefs);
+    console.log('[Combat] Attack:', attacker.name || attacker.id, '→', target.name || target.id);
 
-    // 2. Get weapon and apply armor effectiveness bonuses
+    // === STEP 1: ATTACK ROLL (d20 + modifiers) ===
+    const attackRoll = rollDice('1d20');
+    const naturalRoll = attackRoll.naturalRoll || 0;
+
+    // Get attack bonuses
+    const attackBonus = attacker.attack || 0;
+    const dexMod = getAbilityModifier(attacker.dexterity || 10);
+
+    // Get weapon attack bonus
     const weapon = getEquippedWeapon(attacker);
-    const targetArmor = getEquippedArmor(target);
+    const weaponAttackBonus = weapon?.attackBonus || 0;
 
-    if (weapon && targetArmor?.armorType) {
-        // Apply armor effectiveness bonus based on target's armor type
-        if (targetArmor.armorType === 'light' && weapon.lightArmorBonus) {
-            damage += weapon.lightArmorBonus;
-        } else if (targetArmor.armorType === 'medium' && weapon.mediumArmorBonus) {
-            damage += weapon.mediumArmorBonus;
-        } else if (targetArmor.armorType === 'heavy' && weapon.heavyArmorBonus) {
-            damage += weapon.heavyArmorBonus;
+    const totalAttackRoll = attackRoll.total + attackBonus + dexMod + weaponAttackBonus;
+
+    console.log(`[Combat] Attack Roll: d20=${naturalRoll}, total=${totalAttackRoll} (base:${attackBonus}, dex:${dexMod}, weapon:${weaponAttackBonus})`);
+
+    // === STEP 2: CALCULATE TARGET DEFENSE (AC) ===
+    // D&D 5e style: Base AC 10 + armor bonus + magic bonus + dex mod
+    const BASE_AC = 10;
+    const targetDexMod = getAbilityModifier(target.dexterity || 10);
+    const armor = getEquippedArmor(target);
+
+    // Get armor bonuses (new system: armor ADDS to AC)
+    const armorBonus = armor?.armorBonus || armor?.defense || 0;  // Support both new and legacy field names
+    const magicBonus = armor?.magicBonus || 0;
+
+    // Final AC: higher = harder to hit
+    const targetAC = BASE_AC + armorBonus + magicBonus + targetDexMod;
+
+    console.log(`[Combat] Target AC: ${targetAC} (base:${BASE_AC} + armor:${armorBonus} + magic:${magicBonus} + dex:${targetDexMod})`);
+
+    // === STEP 3: CHECK HIT ===
+    // Natural 1 = automatic miss
+    if (naturalRoll === 1) {
+        console.log('[Combat] FUMBLE! Natural  1 - auto miss');
+        events.push({
+            type: 'damage',
+            entityId: attacker.id,
+            amount: 0,
+            miss: true,
+            fumble: true,
+            attackRoll: totalAttackRoll,
+            targetAC
+        } as any);
+        return { damage: 0, events };
+    }
+
+    // Natural 20 = automatic hit + crit
+    const isCritical = naturalRoll === 20;
+    const isHit = isCritical || totalAttackRoll >= targetAC;
+
+    if (!isHit) {
+        console.log(`[Combat] MISS! ${totalAttackRoll} < ${targetAC}`);
+        events.push({
+            type: 'damage',
+            entityId: attacker.id,
+            amount: 0,
+            miss: true,
+            attackRoll: totalAttackRoll,
+            targetAC
+        } as any);
+        return { damage: 0, events };
+    }
+
+    console.log(`[Combat] HIT! ${totalAttackRoll} >= ${targetAC}${isCritical ? ' (CRITICAL!)' : ''}`);
+
+    // === STEP 4: DAMAGE ROLL ===
+    // Get weapon damage dice
+    const weaponDamage = weapon?.damage || '1d4'; // Default punch damage
+    const damageRoll = rollDice(weaponDamage);
+
+    // Get strength modifier
+    const strMod = getAbilityModifier(attacker.strength || 10);
+
+    // Calculate base damage
+    let totalDamage = damageRoll.total + strMod;
+
+    console.log(`[Combat] Damage Roll: ${weaponDamage}=${damageRoll.total}, str:${strMod}`);
+
+    // Critical hit: double damage dice (roll again and add)
+    if (isCritical) {
+        const critRoll = rollDice(weaponDamage);
+        totalDamage = damageRoll.total + critRoll.total + strMod;
+
+        console.log(`[Combat] CRITICAL! Extra ${weaponDamage}=${critRoll.total}, total damage: ${totalDamage}`);
+
+        events.push({
+            type: 'critical_hit',
+            entityId: attacker.id,
+            amount: totalDamage,
+            attackRoll: totalAttackRoll,
+            targetAC,
+            damageRolls: [...damageRoll.rolls, ...critRoll.rolls],
+            damageNotation: weaponDamage
+        } as any);
+    } else {
+        events.push({
+            type: 'damage',
+            entityId: attacker.id,
+            amount: totalDamage,
+            attackRoll: totalAttackRoll,
+            targetAC,
+            damageRolls: damageRoll.rolls,
+            damageNotation: weaponDamage
+        } as any);
+    }
+
+    // === STEP 5: APPLY ARMOR EFFECTIVENESS BONUSES ===
+    if (weapon && armor?.armorType) {
+        if (armor.armorType === 'light' && weapon.lightArmorBonus) {
+            totalDamage += weapon.lightArmorBonus;
+            console.log(`[Combat] Weapon effective vs light armor: +${weapon.lightArmorBonus}`);
+        } else if (armor.armorType === 'medium' && weapon.mediumArmorBonus) {
+            totalDamage += weapon.mediumArmorBonus;
+            console.log(`[Combat] Weapon effective vs medium armor: +${weapon.mediumArmorBonus}`);
+        } else if (armor.armorType === 'heavy' && weapon.heavyArmorBonus) {
+            totalDamage += weapon.heavyArmorBonus;
+            console.log(`[Combat] Weapon effective vs heavy armor: +${weapon.heavyArmorBonus}`);
         }
     }
 
-    const attackerStats = getEffectiveStats(attacker);
-    const targetStats = getEffectiveStats(target);
+    // Minimum 1 damage on hit
+    const finalDamage = Math.max(1, Math.floor(totalDamage));
 
-    // 3. Apply chance_on_attack effects (critical hits, etc.)
+    console.log(`[Combat] Final damage: ${finalDamage}`);
+
+    // === STEP 6: APPLY ON-HIT EFFECTS (lifesteal, etc.) ===
+    const attackerStats = getEffectiveStats(attacker);
     Object.keys(attackerStats).forEach(statKey => {
         const statValue = attackerStats[statKey];
         const def = statDefs[statKey];
         if (!def) return;
 
         def.effects.forEach(effect => {
-            if (effect.type === 'chance_on_attack' && effect.effect) {
-                const chance = evaluateFormula(effect.chance, { value: statValue });
+            if (effect.type === 'on_attack_hit' && effect.effect) {
+                if (effect.effect.type === 'heal') {
+                    const healAmount = Math.floor(evaluateFormula(effect.effect.amount, {
+                        value: statValue,
+                        damageDealt: finalDamage
+                    }));
 
-                if (Math.random() * 100 < chance) {
-                    // Effect triggered!
-                    if (effect.effect.type === 'multiply_damage') {
-                        damage *= effect.effect.multiplier || 1;
+                    if (healAmount > 0) {
+                        const maxHp = calculateEffectiveStat(attacker, 'maxHp', statDefs);
+                        attacker.hp = Math.min(maxHp, (attacker.hp || 0) + healAmount);
+
+                        console.log(`[Combat] Lifesteal: +${healAmount} HP`);
+
                         events.push({
-                            type: 'critical_hit',
+                            type: 'lifesteal',
                             entityId: attacker.id,
-                            amount: damage
-                        });
-                    } else if (effect.effect.type === 'add_damage') {
-                        const addAmount = evaluateFormula(effect.effect.amount, {
-                            value: statValue,
-                            baseDamage: damage
-                        });
-                        damage += addAmount;
-                    }
-                }
-            }
-        });
-    });
-
-    // 4. Check chance_on_defend effects (dodge, block)
-    Object.keys(targetStats).forEach(statKey => {
-        const statValue = targetStats[statKey];
-        const def = statDefs[statKey];
-        if (!def) return;
-
-        def.effects.forEach(effect => {
-            if (effect.type === 'chance_on_defend' && effect.effect) {
-                const chance = evaluateFormula(effect.chance, { value: statValue });
-
-                if (Math.random() * 100 < chance) {
-                    if (effect.effect.type === 'negate_damage') {
-                        // Full dodge!
-                        damage = 0;
-                        events.push({
-                            type: 'dodge',
-                            entityId: target.id
+                            amount: healAmount
                         });
                     }
                 }
             }
         });
     });
-
-    // 5. Apply defense reduction (if attack wasn't dodged)
-    if (damage > 0) {
-        const defense = calculateEffectiveStat(target, 'defense', statDefs);
-        damage = Math.max(1, damage - defense);
-    }
-
-    const finalDamage = Math.floor(damage);
-
-    // 6. Apply on_attack_hit effects (lifesteal, etc.)
-    if (finalDamage > 0) {
-        Object.keys(attackerStats).forEach(statKey => {
-            const statValue = attackerStats[statKey];
-            const def = statDefs[statKey];
-            if (!def) return;
-
-            def.effects.forEach(effect => {
-                if (effect.type === 'on_attack_hit' && effect.effect) {
-                    if (effect.effect.type === 'heal') {
-                        const healAmount = Math.floor(evaluateFormula(effect.effect.amount, {
-                            value: statValue,
-                            damageDealt: finalDamage
-                        }));
-
-                        if (healAmount > 0) {
-                            const maxHp = calculateEffectiveStat(attacker, 'maxHp', statDefs);
-                            attacker.hp = Math.min(maxHp, (attacker.hp || 0) + healAmount);
-
-                            events.push({
-                                type: 'lifesteal',
-                                entityId: attacker.id,
-                                amount: healAmount
-                            });
-                        }
-                    }
-                }
-            });
-        });
-    }
 
     return {
         damage: finalDamage,

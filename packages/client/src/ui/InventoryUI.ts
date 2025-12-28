@@ -7,6 +7,7 @@ export class InventoryUI {
     private previousInventoryJson: string = '';
     private onEquipCallback: ((itemId: string, slot: string) => void) | null = null;
     private onUnequipCallback: ((slot: string) => void) | null = null;
+    private onDropCallback: ((itemIndex: number) => void) | null = null;
 
     constructor(container: HTMLElement) {
         this.container = container;
@@ -14,20 +15,30 @@ export class InventoryUI {
     }
 
     setPlayer(player: any) {
-        // Only re-render if inventory actually changed
-        const currentInventoryJson = JSON.stringify(player?.inventory);
-        if (currentInventoryJson === this.previousInventoryJson && this.player) {
+        // Re-render if inventory OR HP changed
+        const currentStateJson = JSON.stringify({
+            inventory: player?.inventory,
+            hp: player?.hp,
+            maxHp: player?.maxHp,
+            equipment: player?.equipment
+        });
+        if (currentStateJson === this.previousInventoryJson && this.player) {
             return; // No change, skip re-render
         }
 
-        this.previousInventoryJson = currentInventoryJson;
+        this.previousInventoryJson = currentStateJson;
         this.player = player;
         this.render();
     }
 
-    setCallbacks(onEquip: (itemId: string, slot: string) => void, onUnequip: (slot: string) => void) {
+    setCallbacks(
+        onEquip: (itemId: string, slot: string) => void,
+        onUnequip: (slot: string) => void,
+        onDrop?: (itemIndex: number) => void
+    ) {
         this.onEquipCallback = onEquip;
         this.onUnequipCallback = onUnequip;
+        this.onDropCallback = onDrop || null;
     }
 
     private render() {
@@ -42,34 +53,33 @@ export class InventoryUI {
 
         const baseStats = {
             strength: (this.player as any).strength || 10,
+            dexterity: (this.player as any).dexterity || 10,
             constitution: (this.player as any).constitution || 10,
-            attack: this.player.attack || 5,
-            defense: (this.player as any).defense || 2
+            intelligence: (this.player as any).intelligence || 10,
+            wisdom: (this.player as any).wisdom || 10,
+            charisma: (this.player as any).charisma || 10,
+            attack: this.player.attack || 0,
+            defense: (this.player as any).defense || 10  // Base AC 10 (lower is better)
         };
 
         // Calculate equipment bonuses - use any to support dynamic stat properties
         const effectiveStats: any = { ...baseStats };
+        let weaponDamage = '1d4'; // Default unarmed damage
 
         // Apply bonuses from equipped items
         Object.values(equipment).forEach((equippedItem: any) => {
             if (equippedItem && typeof equippedItem === 'object') {
-                // Item data is already stored in the equipment slot!
-                // No need to look it up in ContentLibrary
                 console.log('[InventoryUI] Equipped item:', equippedItem);
 
-                // Flexible stat mapping - supports any custom bonuses
-                // Map item properties to stats:
-                // - damage -> attack
-                // - defence -> defense
-                // - any *Bonus properties apply directly
-
-                if (equippedItem.damage) {
-                    console.log('[InventoryUI] Adding damage:', equippedItem.damage);
-                    effectiveStats.attack += equippedItem.damage;
+                // Track weapon damage separately (dice notation)
+                if (equippedItem.damage && typeof equippedItem.damage === 'string') {
+                    weaponDamage = equippedItem.damage;
                 }
+
+                // Armor SUBTRACTS from defense (lower AC = tougher)
                 if (equippedItem.defence) {
-                    console.log('[InventoryUI] Adding defence:', equippedItem.defence);
-                    effectiveStats.defense += equippedItem.defence;
+                    console.log('[InventoryUI] Subtracting defence:', equippedItem.defence);
+                    effectiveStats.defense -= equippedItem.defence;  // Subtract, not add!
                 }
 
                 // Support explicit bonus properties
@@ -106,6 +116,12 @@ export class InventoryUI {
             }
         });
 
+        // Calculate ability modifiers
+        const getModifier = (score: number) => {
+            const mod = Math.floor((score - 10) / 2);
+            return mod >= 0 ? `+${mod}` : `${mod}`;
+        };
+
         this.container.innerHTML = `
             <div style="
                 width: 250px;
@@ -122,26 +138,60 @@ export class InventoryUI {
             ">
                 <!-- Player Stats -->
                 <div style="background: rgba(40, 40, 60, 0.8); padding: 0.75rem; border-radius: 6px; border: 1px solid #46a;">
-                    <div style="font-weight: bold; color: #8af; margin-bottom: 0.5rem; font-size: 0.9rem;">📊 STATS</div>
+                    <div style="font-weight: bold; color: #8af; margin-bottom: 0.5rem; font-size: 0.9rem;">📊 CHARACTER</div>
                     <div style="display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.85rem;">
                         <div style="display: flex; justify-content: space-between;">
                             <span style="color: #f88;">❤️ HP:</span>
                             <span style="color: #fff; font-weight: bold;">${this.player.hp}/${this.player.maxHp || this.player.hp}</span>
                         </div>
+                    </div>
+                </div>
+
+                <!-- D&D Ability Scores -->
+                <div style="background: rgba(40, 40, 60, 0.8); padding: 0.75rem; border-radius: 6px; border: 1px solid #46a;">
+                    <div style="font-weight: bold; color: #8af; margin-bottom: 0.5rem; font-size: 0.9rem;">🎲 ABILITIES</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.85rem;">
                         <div style="display: flex; justify-content: space-between;">
-                            <span style="color: #fa4;">💪 Strength:</span>
-                            <span>${effectiveStats.strength}</span>
+                            <span style="color: #fa4;">💪 STR:</span>
+                            <span>${effectiveStats.strength || 10} <span style="color: #8af;">(${getModifier(effectiveStats.strength || 10)})</span></span>
                         </div>
                         <div style="display: flex; justify-content: space-between;">
-                            <span style="color: #4af;">🛡️ Constitution:</span>
-                            <span>${effectiveStats.constitution}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; border-top: 1px solid #444; padding-top: 0.35rem; margin-top: 0.35rem;">
-                            <span style="color: #f88;">⚔️ Attack:</span>
-                            <span>${effectiveStats.attack}</span>
+                            <span style="color: #4f4;">⚡ DEX:</span>
+                            <span>${effectiveStats.dexterity || 10} <span style="color: #8af;">(${getModifier(effectiveStats.dexterity || 10)})</span></span>
                         </div>
                         <div style="display: flex; justify-content: space-between;">
-                            <span style="color: #8af;">🛡️ Defense:</span>
+                            <span style="color: #4af;">🛡️ CON:</span>
+                            <span>${effectiveStats.constitution || 10} <span style="color: #8af;">(${getModifier(effectiveStats.constitution || 10)})</span></span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: #8cf;">🧠 INT:</span>
+                            <span>${effectiveStats.intelligence || 10} <span style="color: #8af;">(${getModifier(effectiveStats.intelligence || 10)})</span></span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: #f8f;">🔮 WIS:</span>
+                            <span>${effectiveStats.wisdom || 10} <span style="color: #8af;">(${getModifier(effectiveStats.wisdom || 10)})</span></span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: #ff8;">⭐ CHA:</span>
+                            <span>${effectiveStats.charisma || 10} <span style="color: #8af;">(${getModifier(effectiveStats.charisma || 10)})</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Combat Stats -->
+                <div style="background: rgba(40, 40, 60, 0.8); padding: 0.75rem; border-radius: 6px; border: 1px solid #46a;">
+                    <div style="font-weight: bold; color: #8af; margin-bottom: 0.5rem; font-size: 0.9rem;">⚔️ COMBAT</div>
+                    <div style="display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.85rem;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: #f88;">🎲 Weapon:</span>
+                            <span>${weaponDamage}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: #fa4;">⚔️ Attack Bonus:</span>
+                            <span>+${effectiveStats.attack}</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: #8af;">🛡️ Defense (AC):</span>
                             <span>${effectiveStats.defense}</span>
                         </div>
                     </div>
@@ -210,8 +260,11 @@ export class InventoryUI {
     }
 
     private renderInventoryItem(item: any, index: number): string {
-        const icon = item.icon || '🎁';
-        const name = item.name || item.itemId || 'Unknown Item';
+        console.log('[InventoryUI] Rendering item:', item);
+        // Handle both wrapped (data) and unwrapped item formats
+        const itemData = item.data || item;
+        const icon = itemData.icon || '🎁';
+        const name = itemData.name || item.name || item.itemId || 'Unknown Item';
 
         return `
             <div class="inventory-item" data-index="${index}" style="
@@ -233,15 +286,26 @@ export class InventoryUI {
                         ${item.quantity > 1 ? `<div style="font-size: 0.7rem; color: #888;">x${item.quantity}</div>` : ''}
                     </div>
                 </div>
-                <button class="equip-btn" data-index="${index}" style="
-                    background: #46a;
-                    border: none;
-                    color: #fff;
-                    padding: 0.3rem 0.6rem;
-                    border-radius: 3px;
-                    cursor: pointer;
-                    font-size: 0.75rem;
-                ">Equip</button>
+                <div style="display: flex; gap: 0.3rem;">
+                    <button class="equip-btn" data-index="${index}" style="
+                        background: #46a;
+                        border: none;
+                        color: #fff;
+                        padding: 0.3rem 0.6rem;
+                        border-radius: 3px;
+                        cursor: pointer;
+                        font-size: 0.75rem;
+                    ">Equip</button>
+                    <button class="drop-btn" data-index="${index}" style="
+                        background: #a44;
+                        border: none;
+                        color: #fff;
+                        padding: 0.3rem 0.6rem;
+                        border-radius: 3px;
+                        cursor: pointer;
+                        font-size: 0.75rem;
+                    ">Drop</button>
+                </div>
             </div>
         `;
     }
@@ -277,6 +341,18 @@ export class InventoryUI {
                 const slot = (btn as HTMLElement).dataset.slot;
                 if (slot && this.onUnequipCallback) {
                     this.onUnequipCallback(slot);
+                }
+            });
+        });
+
+        // Drop buttons
+        this.container.querySelectorAll('.drop-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const index = parseInt((btn as HTMLElement).dataset.index || '0');
+                console.log('[InventoryUI] Drop button clicked, index:', index);
+                if (this.onDropCallback) {
+                    this.onDropCallback(index);
                 }
             });
         });

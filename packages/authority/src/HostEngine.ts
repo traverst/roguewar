@@ -338,7 +338,52 @@ export class HostEngine {
             });
         }
 
+
         // AFTER human action, query AI for their actions
+        // First, process static enemies with aiBehavior (placed via Level Editor)
+        console.log('[HostEngine] === Starting AI Processing ===');
+        console.log('[HostEngine] All entities:', this.state.entities.map(e => ({
+            id: e.id, type: e.type, hp: e.hp, hasAiBehavior: !!e.aiBehavior
+        })));
+
+        const staticEnemies = this.state.entities.filter(e =>
+            e.type === EntityType.Enemy &&
+            e.hp > 0 &&
+            e.aiBehavior &&
+            !this.aiPlayers.has(e.id)
+        );
+
+        console.log('[HostEngine] Found', staticEnemies.length, 'static enemies');
+        if (staticEnemies.length > 0) {
+            console.log('[HostEngine] Static enemies:', staticEnemies.map(e => ({
+                id: e.id, name: e.name, pos: e.pos, aiBehavior: e.aiBehavior
+            })));
+        }
+
+        for (const enemy of staticEnemies) {
+            console.log(`[HostEngine] Processing AI for ${enemy.name} (${enemy.id})`);
+
+            // Create AI bot for this enemy using its aiBehavior config
+            const bot = new ReactiveBot(enemy.aiBehavior);
+            const perception = createPerception(this.state, enemy.id);
+            const aiAction = bot.decide(perception);
+
+            // CRITICAL FIX: Override actorId with entity ID (bot incorrectly sets it to aiBehavior object)
+            aiAction.actorId = enemy.id;
+
+            console.log(`[HostEngine] ${enemy.name} decided:`, aiAction);
+
+            // Process enemy action through rules AND capture events
+            const enemyResult = resolveTurn(this.state, aiAction);
+            this.state = enemyResult.nextState;
+
+            // Add enemy combat events to the main events array so clients see them
+            events.push(...enemyResult.events);
+        }
+
+        console.log('[HostEngine] Finished static enemies');
+
+        // Then process registered AI players
         this.processAIActions();
 
         // Advance turn once after all actors have had a chance to act

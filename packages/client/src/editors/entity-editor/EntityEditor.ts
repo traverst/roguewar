@@ -8,8 +8,8 @@ export class EntityEditor {
         description: 'A custom enemy entity',
         hp: 100,
         maxHp: 100,
-        attack: 10,
-        defense: 5,
+        attack: 0,  // Default attack bonus
+        defense: 10,  // Default AC (lower is better)
         aiBehavior: {
             detectionRange: 5,
             attackRange: 1,
@@ -18,7 +18,8 @@ export class EntityEditor {
         },
         color: '#f85149',
         sprite: 'goblin',
-        tags: []
+        tags: [],
+        inventory: { slots: [] }  // Loot items this entity drops on death
     };
 
     private spriteTemplate: string = 'goblin';
@@ -50,7 +51,7 @@ export class EntityEditor {
                     </div>
                     
                     <div class="panel">
-                        <div class="panel-title">⚔️ Combat Stats</div>
+                        <div class="panel-title">⚔️ D20 Combat Stats</div>
                         <div class="form-group">
                             <label class="form-label">
                                 Max HP
@@ -65,19 +66,75 @@ export class EntityEditor {
                             </label>
                             <input type="range" class="form-slider" id="entity-hp" min="1" max="${this.entity.maxHp}" value="${this.entity.hp}" />
                         </div>
+                        
+                        <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);"></div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">🎲 D&D Ability Scores</div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                            <div class="form-group">
+                                <label class="form-label" style="font-size: 0.85rem;">
+                                    STR <span class="slider-value" id="strength-value">${(this.entity as any).strength || 10}</span>
+                                </label>
+                                <input type="range" class="form-slider" id="entity-strength" min="1" max="20" value="${(this.entity as any).strength || 10}" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" style="font-size: 0.85rem;">
+                                    DEX <span class="slider-value" id="dexterity-value">${(this.entity as any).dexterity || 10}</span>
+                                </label>
+                                <input type="range" class="form-slider" id="entity-dexterity" min="1" max="20" value="${(this.entity as any).dexterity || 10}" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" style="font-size: 0.85rem;">
+                                    CON <span class="slider-value" id="constitution-value">${(this.entity as any).constitution || 10}</span>
+                                </label>
+                                <input type="range" class="form-slider" id="entity-constitution" min="1" max="20" value="${(this.entity as any).constitution || 10}" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" style="font-size: 0.85rem;">
+                                    INT <span class="slider-value" id="intelligence-value">${(this.entity as any).intelligence || 10}</span>
+                                </label>
+                                <input type="range" class="form-slider" id="entity-intelligence" min="1" max="20" value="${(this.entity as any).intelligence || 10}" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" style="font-size: 0.85rem;">
+                                    WIS <span class="slider-value" id="wisdom-value">${(this.entity as any).wisdom || 10}</span>
+                                </label>
+                                <input type="range" class="form-slider" id="entity-wisdom" min="1" max="20" value="${(this.entity as any).wisdom || 10}" />
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" style="font-size: 0.85rem;">
+                                    CHA <span class="slider-value" id="charisma-value">${(this.entity as any).charisma || 10}</span>
+                                </label>
+                                <input type="range" class="form-slider" id="entity-charisma" min="1" max="20" value="${(this.entity as any).charisma || 10}" />
+                            </div>
+                        </div>
+                        
+                        <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border);"></div>
+                        <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.75rem;">⚔️ Combat Modifiers</div>
+                        
                         <div class="form-group">
                             <label class="form-label">
-                                Attack
-                                <span class="slider-value" id="attack-value">${this.entity.attack}</span>
+                                Attack Bonus (to-hit)
+                                <span class="slider-value" id="attack-value">${this.entity.attack || 0}</span>
                             </label>
-                            <input type="range" class="form-slider" id="entity-attack" min="1" max="100" value="${this.entity.attack}" />
+                            <input type="range" class="form-slider" id="entity-attack" min="0" max="10" value="${this.entity.attack || 0}" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Damage Dice</label>
+                            <input type="text" class="form-input" id="entity-damage" placeholder="1d6" value="${(this.entity as any).damage || '1d6'}" />
+                            <div style="margin-top: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                <button class="damage-preset-btn" data-dice="1d4" style="padding: 0.3rem 0.6rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.8rem;">1d4</button>
+                                <button class="damage-preset-btn" data-dice="1d6" style="padding: 0.3rem 0.6rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.8rem;">1d6</button>
+                                <button class="damage-preset-btn" data-dice="1d8" style="padding: 0.3rem 0.6rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.8rem;">1d8</button>
+                                <button class="damage-preset-btn" data-dice="2d6" style="padding: 0.3rem 0.6rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.8rem;">2d6</button>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label class="form-label">
-                                Defense
-                                <span class="slider-value" id="defense-value">${this.entity.defense || 0}</span>
+                                Defense (AC - lower is better)
+                                <span class="slider-value" id="defense-value">${this.entity.defense || 10}</span>
                             </label>
-                            <input type="range" class="form-slider" id="entity-defense" min="0" max="50" value="${this.entity.defense || 0}" />
+                            <input type="range" class="form-slider" id="entity-defense" min="0" max="15" value="${this.entity.defense || 10}" />
                         </div>
                     </div>
                     
@@ -232,6 +289,23 @@ export class EntityEditor {
                             <li><strong>Defensive:</strong> Protects wounded allies</li>
                         </ul>
                     </div>
+                    
+                    <div class="panel">
+                        <div class="panel-title">🎁 Loot Drops</div>
+                        <div style="margin-bottom: var(--spacing-sm);">
+                            <select id="loot-item-select" class="form-select" style="width: 100%;">
+                                <option value="">-- Select item to add --</option>
+                                ${this.getLibraryItemOptions()}
+                            </select>
+                            <button id="btn-add-loot" class="btn btn-success" style="width: 100%; margin-top: var(--spacing-xs);">+ Add to Loot Table</button>
+                        </div>
+                        <div id="loot-list" style="display: flex; flex-direction: column; gap: var(--spacing-xs);">
+                            ${this.renderLootList()}
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: var(--spacing-xs);">
+                            💡 Items here drop when this enemy dies
+                        </div>
+                    </div>
                 </div>
                 
                 <div id="library-column" style="overflow-y: auto;">
@@ -293,7 +367,18 @@ export class EntityEditor {
             this.entity.description = (document.getElementById('entity-desc') as HTMLTextAreaElement).value;
             this.entity.maxHp = parseInt((document.getElementById('entity-maxhp') as HTMLInputElement).value);
             this.entity.hp = parseInt((document.getElementById('entity-hp') as HTMLInputElement).value);
+
+            // D&D Ability Scores
+            (this.entity as any).strength = parseInt((document.getElementById('entity-strength') as HTMLInputElement)?.value || '10');
+            (this.entity as any).dexterity = parseInt((document.getElementById('entity-dexterity') as HTMLInputElement)?.value || '10');
+            (this.entity as any).constitution = parseInt((document.getElementById('entity-constitution') as HTMLInputElement)?.value || '10');
+            (this.entity as any).intelligence = parseInt((document.getElementById('entity-intelligence') as HTMLInputElement)?.value || '10');
+            (this.entity as any).wisdom = parseInt((document.getElementById('entity-wisdom') as HTMLInputElement)?.value || '10');
+            (this.entity as any).charisma = parseInt((document.getElementById('entity-charisma') as HTMLInputElement)?.value || '10');
+
+            // Combat modifiers
             this.entity.attack = parseInt((document.getElementById('entity-attack') as HTMLInputElement).value);
+            (this.entity as any).damage = (document.getElementById('entity-damage') as HTMLInputElement).value;
             this.entity.defense = parseInt((document.getElementById('entity-defense') as HTMLInputElement).value);
             this.entity.color = (document.getElementById('entity-color') as HTMLInputElement).value;
 
@@ -318,6 +403,12 @@ export class EntityEditor {
         const sliders = [
             { id: 'entity-maxhp', valueId: 'maxhp-value' },
             { id: 'entity-hp', valueId: 'hp-value' },
+            { id: 'entity-strength', valueId: 'strength-value' },
+            { id: 'entity-dexterity', valueId: 'dexterity-value' },
+            { id: 'entity-constitution', valueId: 'constitution-value' },
+            { id: 'entity-intelligence', valueId: 'intelligence-value' },
+            { id: 'entity-wisdom', valueId: 'wisdom-value' },
+            { id: 'entity-charisma', valueId: 'charisma-value' },
             { id: 'entity-attack', valueId: 'attack-value' },
             { id: 'entity-defense', valueId: 'defense-value' },
             { id: 'entity-detection', valueId: 'detection-value' },
@@ -338,8 +429,21 @@ export class EntityEditor {
         });
 
         // Text inputs
-        ['entity-id', 'entity-name', 'entity-desc', 'entity-color', 'entity-tags'].forEach(id => {
+        ['entity-id', 'entity-name', 'entity-desc', 'entity-color', 'entity-tags', 'entity-damage'].forEach(id => {
             document.getElementById(id)?.addEventListener('input', updateEntity);
+        });
+
+        // Damage dice preset buttons
+        document.querySelectorAll('.damage-preset-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const dice = (e.target as HTMLElement).getAttribute('data-dice');
+                const damageInput = document.getElementById('entity-damage') as HTMLInputElement;
+                if (dice && damageInput) {
+                    damageInput.value = dice;
+                    updateEntity();
+                }
+            });
         });
 
         // Selects
@@ -364,6 +468,18 @@ export class EntityEditor {
         document.getElementById('btn-export')?.addEventListener('click', () => this.exportEntity());
         document.getElementById('btn-import')?.addEventListener('click', () => this.importEntity());
         document.getElementById('btn-reset')?.addEventListener('click', () => this.resetEntity());
+
+        // Loot panel
+        document.getElementById('btn-add-loot')?.addEventListener('click', () => {
+            const select = document.getElementById('loot-item-select') as HTMLSelectElement;
+            if (select && select.value) {
+                this.addLootItem(select.value);
+                select.value = '';  // Reset dropdown
+            }
+        });
+
+        // Initial loot remove buttons
+        this.refreshLootList();
     }
 
     private getSpriteEmoji(): string {
@@ -500,6 +616,71 @@ export class EntityEditor {
             reader.readAsText(file);
         };
         input.click();
+    }
+
+    private getLibraryItemOptions(): string {
+        const items = ContentLibrary.getItems('item');
+        if (items.length === 0) {
+            return '<option value="" disabled>No items in library - create some in Item Editor</option>';
+        }
+        return items.map((item: any) =>
+            `<option value="${item.id}">${item.data?.icon || '🎁'} ${item.name}</option>`
+        ).join('');
+    }
+
+    private renderLootList(): string {
+        const inventory = (this.entity as any).inventory?.slots || [];
+        if (inventory.length === 0) {
+            return '<div style="color: var(--text-secondary); font-size: 0.8rem; font-style: italic;">No loot items added yet</div>';
+        }
+        return inventory.map((item: any, index: number) => `
+            <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-tertiary); padding: var(--spacing-xs); border-radius: var(--radius-sm);">
+                <div style="display: flex; align-items: center; gap: var(--spacing-xs);">
+                    <span>${item.icon || '🎁'}</span>
+                    <span style="font-size: 0.85rem;">${item.name || item.itemId}</span>
+                </div>
+                <button class="btn-remove-loot" data-index="${index}" style="background: #a44; border: none; color: #fff; padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 0.7rem;">✕</button>
+            </div>
+        `).join('');
+    }
+
+    private refreshLootList(): void {
+        const lootListEl = document.getElementById('loot-list');
+        if (lootListEl) {
+            lootListEl.innerHTML = this.renderLootList();
+            // Re-attach remove button listeners
+            lootListEl.querySelectorAll('.btn-remove-loot').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const index = parseInt((btn as HTMLElement).dataset.index || '0');
+                    this.removeLootItem(index);
+                });
+            });
+        }
+    }
+
+    private addLootItem(itemId: string): void {
+        const libraryItem = ContentLibrary.getItem(itemId) as any;
+        if (libraryItem && libraryItem.data) {
+            if (!(this.entity as any).inventory) {
+                (this.entity as any).inventory = { slots: [] };
+            }
+            // Use libraryItem.data which contains actual item properties (icon, type, damage, etc.)
+            const itemData = libraryItem.data;
+            (this.entity as any).inventory.slots.push({
+                ...itemData,
+                itemId: libraryItem.id  // Use itemId format for inventory
+            });
+            console.log('[EntityEditor] Added loot item:', { itemId: libraryItem.id, icon: itemData.icon, name: itemData.name });
+            this.refreshLootList();
+        }
+    }
+
+    private removeLootItem(index: number): void {
+        const inventory = (this.entity as any).inventory?.slots;
+        if (inventory && index >= 0 && index < inventory.length) {
+            inventory.splice(index, 1);
+            this.refreshLootList();
+        }
     }
 
     private resetEntity(): void {

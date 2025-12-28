@@ -14,8 +14,9 @@ export function getEffectiveStats(entity: any): Record<string, number> {
     const stats: Record<string, number> = {};
 
     // Base stats
-    stats.strength = entity.strength || 0;
-    stats.constitution = entity.constitution || 0;
+    stats.strength = entity.strength || 10;
+    stats.dexterity = entity.dexterity || 10;
+    stats.constitution = entity.constitution || 10;
     stats.attack = entity.attack || 0;
     stats.defense = entity.defense || 0;
     stats.hp = entity.hp || 0;
@@ -24,51 +25,42 @@ export function getEffectiveStats(entity: any): Record<string, number> {
     // Get equipment bonuses
     const equipment = entity.equipment?.slots || {};
 
-    // Try to get item data from window.ContentLibrary
-    try {
-        const ContentLibrary = (typeof window !== 'undefined') ? (window as any).ContentLibrary : null;
+    console.log('[CombatHelpers] Equipment slots:', equipment);
 
-        if (ContentLibrary) {
-            const allItems = ContentLibrary.getAllItems();
+    // Equipment slots now contain complete item data!
+    Object.values(equipment).forEach((equippedItem: any) => {
+        if (!equippedItem) return;
 
-            // Check each equipped item for bonuses
-            Object.values(equipment).forEach((equippedItem: any) => {
-                if (!equippedItem) return;
+        console.log('[CombatHelpers] Processing equipped item:', equippedItem);
 
-                const itemId = typeof equippedItem === 'object' ? equippedItem.itemId : equippedItem;
-                const itemData = allItems.find((i: any) => i.id === itemId);
+        // Add attackBonus (to-hit bonus) to attack stat
+        if (equippedItem.attackBonus) {
+            stats.attack = (stats.attack || 0) + equippedItem.attackBonus;
+            console.log(`[CombatHelpers] Added attackBonus: ${equippedItem.attackBonus}, new attack: ${stats.attack}`);
+        }
 
-                if (itemData?.data) {
-                    // Add damage/defence from equipment
-                    if (itemData.data.damage) {
-                        stats.attack = (stats.attack || 0) + itemData.data.damage;
-                    }
-                    if (itemData.data.defence) {
-                        stats.defense = (stats.defense || 0) + itemData.data.defence;
-                    }
+        // NOTE: weapon.damage (dice notation like "1d8") is NOT added to attack stat
+        // It's used directly in combat engine for damage rolls!
 
-                    // Add custom properties
-                    if (itemData.data.customProperties) {
-                        Object.keys(itemData.data.customProperties).forEach(key => {
-                            const value = itemData.data.customProperties[key];
-                            if (typeof value === 'number') {
-                                stats[key] = (stats[key] || 0) + value;
-                            }
-                        });
-                    }
+        // Add defence from armor
+        if (equippedItem.defence) {
+            stats.defense = (stats.defense || 0) + equippedItem.defence;
+            console.log(`[CombatHelpers] Added defence: ${equippedItem.defence}, new defense: ${stats.defense}`);
+        }
+
+        // Add custom properties
+        if (equippedItem.customProperties) {
+            Object.keys(equippedItem.customProperties).forEach(key => {
+                const value = equippedItem.customProperties[key];
+                if (typeof value === 'number') {
+                    stats[key] = (stats[key] || 0) + value;
+                    console.log(`[CombatHelpers] Added custom property ${key}: ${value}`);
                 }
             });
         }
-    } catch (e) {
-        console.warn('[CombatHelpers] Could not access ContentLibrary:', e);
-    }
+    });
 
-    // Add custom bonuses from inventory
-    if (entity.inventory?.customBonuses) {
-        Object.keys(entity.inventory.customBonuses).forEach(key => {
-            stats[key] = (stats[key] || 0) + entity.inventory.customBonuses[key];
-        });
-    }
+    console.log('[CombatHelpers] Final effective stats:', stats);
 
     return stats;
 }
@@ -108,16 +100,12 @@ export function getEquippedWeapon(entity: any): any {
         const weaponSlot = entity.equipment?.slots?.weapon;
         if (!weaponSlot) return null;
 
-        const itemId = typeof weaponSlot === 'object' ? weaponSlot.itemId : weaponSlot;
-
-        const ContentLibrary = (typeof window !== 'undefined') ? (window as any).ContentLibrary : null;
-        if (!ContentLibrary) return null;
-
-        const allItems = ContentLibrary.getAllItems();
-        const item = allItems.find((i: any) => i.id === itemId);
-
-        return item?.data || null;
+        // Equipment slots now store complete item data!
+        // Just return the slot data directly
+        console.log('[CombatHelpers] Weapon slot data:', weaponSlot);
+        return weaponSlot;
     } catch (e) {
+        console.error('[CombatHelpers] Error getting weapon:', e);
         return null;
     }
 }
@@ -130,16 +118,12 @@ export function getEquippedArmor(entity: any): any {
         const armorSlot = entity.equipment?.slots?.armor;
         if (!armorSlot) return null;
 
-        const itemId = typeof armorSlot === 'object' ? armorSlot.itemId : armorSlot;
-
-        const ContentLibrary = (typeof window !== 'undefined') ? (window as any).ContentLibrary : null;
-        if (!ContentLibrary) return null;
-
-        const allItems = ContentLibrary.getAllItems();
-        const item = allItems.find((i: any) => i.id === itemId);
-
-        return item?.data || null;
+        // Equipment slots now store complete item data!
+        // Just return the slot data directly
+        console.log('[CombatHelpers] Armor slot data:', armorSlot);
+        return armorSlot;
     } catch (e) {
+        console.error('[CombatHelpers] Error getting armor:', e);
         return null;
     }
 }

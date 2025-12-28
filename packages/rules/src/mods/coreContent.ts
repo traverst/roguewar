@@ -14,8 +14,14 @@ export const CORE_CONTENT: ContentPack = {
             type: EntityType.Player,
             hp: 100,
             maxHp: 100,
-            attack: 10,
-            defense: 5,
+            attack: 0,  // Base attack bonus
+            defense: 10,  // Base AC (lower is better)
+            strength: 12,
+            dexterity: 14,
+            constitution: 13,
+            intelligence: 10,
+            wisdom: 11,
+            charisma: 10,
             inventoryCapacity: 10,
             visionRange: 8
         },
@@ -25,10 +31,24 @@ export const CORE_CONTENT: ContentPack = {
             type: EntityType.Enemy,
             hp: 30,
             maxHp: 30,
-            attack: 5,
-            defense: 2,
+            attack: 0,  // Base attack bonus
+            defense: 8,  // AC (lower is better)
+            strength: 10,
+            dexterity: 12,
+            constitution: 10,
+            intelligence: 8,
+            wisdom: 8,
+            charisma: 6,
             inventoryCapacity: 3,
-            visionRange: 6
+            visionRange: 6,
+            aiBehavior: {
+                movementPattern: 'chase',
+                detectionRange: 6,
+                attackRange: 1,
+                aggressionLevel: 0.8,
+                fleeThreshold: 0.25,
+                groupBehavior: 'independent'
+            }
         }
     ],
     tiles: [

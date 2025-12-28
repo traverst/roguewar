@@ -151,8 +151,8 @@ export class CanvasRenderer {
                     const offset = (TILE_SIZE - size) / 2;
                     this.ctx.fillRect(x * TILE_SIZE + offset, y * TILE_SIZE + offset, size, size);
 
-                    // Draw item icon
-                    const icon = item.icon || '!';
+                    // Draw item icon - show 🎁 for loot drops, real icon for other items
+                    const icon = item.isLoot ? '🎁' : (item.icon || '!');
                     this.ctx.font = `${TILE_SIZE * 0.6}px Arial`;
                     this.ctx.textAlign = 'center';
                     this.ctx.textBaseline = 'middle';
