@@ -212,65 +212,16 @@ export class CanvasRenderer {
 
         this.ctx.restore();
 
-        // Draw UI overlay - Turn, HP, Level
+        // Draw UI overlay - Turn only (HP/stats now in right sidebar)
         this.ctx.fillStyle = '#fff';
         this.ctx.font = '16px monospace';
         if (centerEntity && centerEntity.type === EntityType.Player) {
-            this.ctx.fillText(`Turn: ${state.turn} | HP: ${centerEntity.hp}/${centerEntity.maxHp} | Level: ${(state.currentLevel || 0) + 1}/${state.maxLevels || 1}`, 10, 20);
+            this.ctx.fillText(`Turn: ${state.turn}`, 10, 20);
         } else {
             this.ctx.fillText(`Turn: ${state.turn} | Spectating`, 10, 20);
         }
 
-        // Draw inventory panel (bottom left)
-        this.renderInventoryPanel(centerEntity);
-    }
-
-    private renderInventoryPanel(player: Entity | undefined) {
-        if (!player || !player.inventory) return;
-
-        const panelX = 10;
-        const panelY = this.height - 150;
-        const panelW = 200;
-        const panelH = 140;
-
-        // Panel background
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-        this.ctx.fillRect(panelX, panelY, panelW, panelH);
-        this.ctx.strokeStyle = '#444';
-        this.ctx.strokeRect(panelX, panelY, panelW, panelH);
-
-        // Title
-        this.ctx.fillStyle = '#aaa';
-        this.ctx.font = 'bold 12px monospace';
-        this.ctx.fillText('INVENTORY', panelX + 10, panelY + 18);
-
-        // Items
-        this.ctx.font = '11px monospace';
-        this.ctx.fillStyle = '#fff';
-        const slots = player.inventory.slots;
-        if (slots.length === 0) {
-            this.ctx.fillStyle = '#666';
-            this.ctx.fillText('(empty)', panelX + 10, panelY + 40);
-        } else {
-            slots.slice(0, 5).forEach((slot, i) => {
-                const itemName = slot.itemId.split(':').pop() || slot.itemId;
-                const text = slot.quantity > 1 ? `${itemName} x${slot.quantity}` : itemName;
-                this.ctx.fillText(`${i + 1}. ${text}`, panelX + 10, panelY + 40 + i * 16);
-            });
-            if (slots.length > 5) {
-                this.ctx.fillStyle = '#666';
-                this.ctx.fillText(`...and ${slots.length - 5} more`, panelX + 10, panelY + 40 + 5 * 16);
-            }
-        }
-
-        // Equipment summary
-        if (player.equipment) {
-            const equipped = Object.entries(player.equipment.slots).filter(([_, v]) => v);
-            if (equipped.length > 0) {
-                this.ctx.fillStyle = '#8af';
-                this.ctx.fillText('Equipped: ' + equipped.map(([k, _]) => k[0].toUpperCase()).join(','), panelX + 10, panelY + panelH - 10);
-            }
-        }
+        // Note: Inventory panel removed - now in right sidebar (InventoryUI)
     }
 
     // Reset fog - clears all levels or a specific level

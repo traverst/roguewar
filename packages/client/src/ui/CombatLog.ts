@@ -44,14 +44,45 @@ export class CombatLog {
           border-radius: 3px;
         ">Clear</button>
       </div>
-      <div id="combat-messages" style="display: flex; flex-direction: column-reverse;">
-        ${this.messages.map(msg => this.formatMessage(msg)).join('')}
+      <div id="combat-messages" style="display: flex; flex-direction: column;">
+        ${this.getGroupedMessages()}
       </div>
     `;
 
         // Add clear button listener
         const clearBtn = this.container.querySelector('#clear-combat-log');
         clearBtn?.addEventListener('click', () => this.clear());
+    }
+
+    /**
+     * Group messages into attack events and reverse order so newest attacks appear first
+     * Each attack/critical/fumble/miss starts a new group
+     */
+    private getGroupedMessages(): string {
+        const groups: Array<Array<{ text: string; type: string }>> = [];
+        let currentGroup: Array<{ text: string; type: string }> = [];
+
+        for (const msg of this.messages) {
+            // Attack types start new groups
+            if (['hit', 'miss', 'critical', 'fumble'].includes(msg.type)) {
+                if (currentGroup.length > 0) {
+                    groups.push(currentGroup);
+                }
+                currentGroup = [msg];
+            } else {
+                // damage, death, heal go into current group
+                currentGroup.push(msg);
+            }
+        }
+        // Don't forget last group
+        if (currentGroup.length > 0) {
+            groups.push(currentGroup);
+        }
+
+        // Reverse groups (newest first) but keep items within each group in order
+        return groups.reverse().map(group =>
+            group.map(msg => this.formatMessage(msg)).join('')
+        ).join('');
     }
 
     private formatMessage(msg: { text: string; type: string }): string {
@@ -97,11 +128,12 @@ export class CombatLog {
     }
 
     addMessage(text: string, type: string = 'info') {
-        this.messages.unshift({ text, type });
+        // Push to end so related messages (attack, damage, death) stay in order
+        this.messages.push({ text, type });
 
-        // Keep only recent messages
+        // Keep only recent messages (remove oldest from front)
         if (this.messages.length > this.maxMessages) {
-            this.messages = this.messages.slice(0, this.maxMessages);
+            this.messages = this.messages.slice(-this.maxMessages);
         }
 
         this.updateDisplay();

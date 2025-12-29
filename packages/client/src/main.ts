@@ -1368,35 +1368,40 @@ async function init() {
   function createHUD(role: string, hostId?: string, userId?: string) {
     const hud = document.createElement('div');
     hud.id = 'game-hud';
-    hud.style.cssText = "position: absolute; top: 10px; left: 10px; background: rgba(0, 0, 0, 0.7); color: #fff; padding: 10px; border-radius: 8px; font-family: 'Inter', sans-serif; pointer-events: auto; z-index: 1000;";
+    // Host info panel at BOTTOM LEFT
+    hud.style.cssText = "position: absolute; bottom: 10px; left: 10px; background: rgba(0, 0, 0, 0.7); color: #fff; padding: 8px 12px; border-radius: 8px; font-family: 'Inter', sans-serif; pointer-events: auto; z-index: 1000; font-size: 0.85rem;";
 
-    let content = '<div><strong>Role:</strong> ' + role + '</div>';
-    if (userId) content += '<div><strong>Identity:</strong> ' + userId + '</div>';
+    let content = '<div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">';
+    content += '<span><strong>Role:</strong> ' + role + '</span>';
+    if (userId) content += '<span><strong>Identity:</strong> ' + userId + '</span>';
     if (hostId) {
-      content += '<div style="margin-top: 5px;"><strong>Host ID:</strong> <span id="hud-host-id" style="font-family: monospace; background: #333; padding: 2px 5px; border-radius: 4px;">' + hostId + '</span> <button id="btn-copy-host" style="cursor: pointer; font-size: 0.8rem;">📋</button></div>';
+      content += '<span><strong>Host:</strong> <span id="hud-host-id" style="font-family: monospace; background: #333; padding: 2px 5px; border-radius: 4px;">' + hostId + '</span> <button id="btn-copy-host" style="cursor: pointer; font-size: 0.75rem; padding: 1px 4px;">📋</button></span>';
     }
+    content += '<span><strong>Level:</strong> <span id="level-indicator">1/1</span></span>';
+    content += '</div>';
 
-    // Level indicator
-    content += '<div style="margin-top: 5px;"><strong>Level:</strong> <span id="level-indicator">1/1</span></div>';
-
+    // Buttons row
+    content += '<div style="display: flex; gap: 8px; margin-top: 8px;">';
     if (role === 'Spectator') {
-      content += '<button id="btn-join-game" style="margin-top: 10px; padding: 5px 10px; background: #3a3a4a; border: 1px solid #46a; color: white; border-radius: 4px; cursor: pointer; width: 100%;">Join Game</button>';
+      content += '<button id="btn-join-game" style="flex: 1; padding: 4px 8px; background: #3a3a4a; border: 1px solid #46a; color: white; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">Join Game</button>';
     }
-
     if (role === 'Host') {
-      content += '<button id="btn-save-game" style="margin-top: 10px; padding: 5px 10px; background: #2a3a2a; color: #4f6; border: 1px solid #4f6; border-radius: 4px; cursor: pointer; width: 100%;">💾 Save Game</button>';
+      content += '<button id="btn-save-game" style="padding: 4px 8px; background: #2a3a2a; color: #4f6; border: 1px solid #4f6; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">💾 Save</button>';
     }
-
-    content += '<button id="btn-quit" style="margin-top: 10px; padding: 5px 10px; background: #a33; border: none; color: white; border-radius: 4px; cursor: pointer; width: 100%;">Quit to Lobby</button>';
+    content += '<button id="btn-quit" style="padding: 4px 8px; background: #a33; border: none; color: white; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">Quit to Lobby</button>';
+    content += '</div>';
 
     hud.innerHTML = content;
     app.appendChild(hud);
 
-    // Append combat log to HUD panel
+    // Create combat log at MID-LEFT (separate from HUD)
     console.log('[Main] createHUD: Checking for combatLog...', (window as any).combatLog);
     if ((window as any).combatLog) {
-      console.log('[Main] createHUD: Appending combatLog to HUD');
-      hud.appendChild((window as any).combatLog.getElement());
+      console.log('[Main] createHUD: Positioning combatLog at mid-left');
+      const combatLogEl = (window as any).combatLog.getElement();
+      // Position at mid-left
+      combatLogEl.style.cssText = "position: absolute; top: 50%; left: 10px; transform: translateY(-50%); width: 280px; max-height: 400px; background: rgba(0, 0, 0, 0.85); border: 1px solid #444; border-radius: 8px; padding: 8px; font-family: 'Inter', monospace; font-size: 0.75rem; overflow-y: auto; z-index: 1000; pointer-events: auto;";
+      app.appendChild(combatLogEl);
     } else {
       console.warn('[Main] createHUD: combatLog not found on window!');
     }

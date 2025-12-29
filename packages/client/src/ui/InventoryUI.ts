@@ -1,10 +1,12 @@
 /**
  * InventoryUI - Sidebar showing player stats, equipment, and inventory
+ * Uses tabs: Stats (Character + Abilities + Combat) vs Gear (Equipment + Inventory)
  */
 export class InventoryUI {
     private container: HTMLElement;
     private player: any = null;
     private previousInventoryJson: string = '';
+    private activeTab: 'stats' | 'gear' = 'stats';
     private onEquipCallback: ((itemId: string, slot: string) => void) | null = null;
     private onUnequipCallback: ((slot: string) => void) | null = null;
     private onDropCallback: ((itemIndex: number) => void) | null = null;
@@ -124,97 +126,120 @@ export class InventoryUI {
 
         this.container.innerHTML = `
             <div style="
-                width: 250px;
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                width: 220px;
+                max-width: calc(100vw - 300px);
                 background: rgba(20, 20, 30, 0.95);
-                border-left: 2px solid #46a;
-                padding: 1rem;
+                border: 1px solid #46a;
+                border-radius: 8px;
+                padding: 0.75rem;
                 display: flex;
                 flex-direction: column;
-                gap: 1rem;
+                gap: 0.75rem;
                 font-family: 'Inter', sans-serif;
                 color: #fff;
                 overflow-y: auto;
-                max-height: 100vh;
+                max-height: calc(100vh - 20px);
+                z-index: 100;
             ">
-                <!-- Player Stats -->
-                <div style="background: rgba(40, 40, 60, 0.8); padding: 0.75rem; border-radius: 6px; border: 1px solid #46a;">
-                    <div style="font-weight: bold; color: #8af; margin-bottom: 0.5rem; font-size: 0.9rem;">📊 CHARACTER</div>
-                    <div style="display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.85rem;">
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: #f88;">❤️ HP:</span>
-                            <span style="color: #fff; font-weight: bold;">${this.player.hp}/${this.player.maxHp || this.player.hp}</span>
+                <!-- Tab Buttons -->
+                <div style="display: flex; gap: 4px; margin-bottom: 0.25rem;">
+                    <button id="tab-stats" style="
+                        flex: 1; padding: 6px 10px; font-size: 0.8rem; font-weight: bold;
+                        background: ${this.activeTab === 'stats' ? '#46a' : '#333'};
+                        color: ${this.activeTab === 'stats' ? '#fff' : '#888'};
+                        border: 1px solid ${this.activeTab === 'stats' ? '#68c' : '#444'};
+                        border-radius: 4px; cursor: pointer;
+                    ">📊 Stats</button>
+                    <button id="tab-gear" style="
+                        flex: 1; padding: 6px 10px; font-size: 0.8rem; font-weight: bold;
+                        background: ${this.activeTab === 'gear' ? '#46a' : '#333'};
+                        color: ${this.activeTab === 'gear' ? '#fff' : '#888'};
+                        border: 1px solid ${this.activeTab === 'gear' ? '#68c' : '#444'};
+                        border-radius: 4px; cursor: pointer;
+                    ">⚔️ Gear</button>
+                </div>
+
+                ${this.activeTab === 'stats' ? `
+                    <!-- STATS TAB: Character + Abilities + Combat -->
+                    <div style="background: rgba(40, 40, 60, 0.8); padding: 0.75rem; border-radius: 6px; border: 1px solid #46a;">
+                        <div style="font-weight: bold; color: #8af; margin-bottom: 0.5rem; font-size: 0.9rem;">📊 CHARACTER</div>
+                        <div style="display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.85rem;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #f88;">❤️ HP:</span>
+                                <span style="color: #fff; font-weight: bold;">${this.player.hp}/${this.player.maxHp || this.player.hp}</span>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- D&D Ability Scores -->
-                <div style="background: rgba(40, 40, 60, 0.8); padding: 0.75rem; border-radius: 6px; border: 1px solid #46a;">
-                    <div style="font-weight: bold; color: #8af; margin-bottom: 0.5rem; font-size: 0.9rem;">🎲 ABILITIES</div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.85rem;">
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: #fa4;">💪 STR:</span>
-                            <span>${effectiveStats.strength || 10} <span style="color: #8af;">(${getModifier(effectiveStats.strength || 10)})</span></span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: #4f4;">⚡ DEX:</span>
-                            <span>${effectiveStats.dexterity || 10} <span style="color: #8af;">(${getModifier(effectiveStats.dexterity || 10)})</span></span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: #4af;">🛡️ CON:</span>
-                            <span>${effectiveStats.constitution || 10} <span style="color: #8af;">(${getModifier(effectiveStats.constitution || 10)})</span></span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: #8cf;">🧠 INT:</span>
-                            <span>${effectiveStats.intelligence || 10} <span style="color: #8af;">(${getModifier(effectiveStats.intelligence || 10)})</span></span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: #f8f;">🔮 WIS:</span>
-                            <span>${effectiveStats.wisdom || 10} <span style="color: #8af;">(${getModifier(effectiveStats.wisdom || 10)})</span></span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: #ff8;">⭐ CHA:</span>
-                            <span>${effectiveStats.charisma || 10} <span style="color: #8af;">(${getModifier(effectiveStats.charisma || 10)})</span></span>
+                    <div style="background: rgba(40, 40, 60, 0.8); padding: 0.75rem; border-radius: 6px; border: 1px solid #46a;">
+                        <div style="font-weight: bold; color: #8af; margin-bottom: 0.5rem; font-size: 0.9rem;">🎲 ABILITIES</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.85rem;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #fa4;">💪 STR:</span>
+                                <span>${effectiveStats.strength || 10} <span style="color: #8af;">(${getModifier(effectiveStats.strength || 10)})</span></span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #4f4;">⚡ DEX:</span>
+                                <span>${effectiveStats.dexterity || 10} <span style="color: #8af;">(${getModifier(effectiveStats.dexterity || 10)})</span></span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #4af;">🛡️ CON:</span>
+                                <span>${effectiveStats.constitution || 10} <span style="color: #8af;">(${getModifier(effectiveStats.constitution || 10)})</span></span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #8cf;">🧠 INT:</span>
+                                <span>${effectiveStats.intelligence || 10} <span style="color: #8af;">(${getModifier(effectiveStats.intelligence || 10)})</span></span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #f8f;">🔮 WIS:</span>
+                                <span>${effectiveStats.wisdom || 10} <span style="color: #8af;">(${getModifier(effectiveStats.wisdom || 10)})</span></span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #ff8;">⭐ CHA:</span>
+                                <span>${effectiveStats.charisma || 10} <span style="color: #8af;">(${getModifier(effectiveStats.charisma || 10)})</span></span>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Combat Stats -->
-                <div style="background: rgba(40, 40, 60, 0.8); padding: 0.75rem; border-radius: 6px; border: 1px solid #46a;">
-                    <div style="font-weight: bold; color: #8af; margin-bottom: 0.5rem; font-size: 0.9rem;">⚔️ COMBAT</div>
-                    <div style="display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.85rem;">
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: #f88;">🎲 Weapon:</span>
-                            <span>${weaponDamage}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: #fa4;">⚔️ Attack Bonus:</span>
-                            <span>+${effectiveStats.attack}</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between;">
-                            <span style="color: #8af;">🛡️ Defense (AC):</span>
-                            <span>${effectiveStats.defense}</span>
+                    <div style="background: rgba(40, 40, 60, 0.8); padding: 0.75rem; border-radius: 6px; border: 1px solid #46a;">
+                        <div style="font-weight: bold; color: #8af; margin-bottom: 0.5rem; font-size: 0.9rem;">⚔️ COMBAT</div>
+                        <div style="display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.85rem;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #f88;">🎲 Weapon:</span>
+                                <span>${weaponDamage}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #fa4;">⚔️ Attack Bonus:</span>
+                                <span>+${effectiveStats.attack}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #8af;">🛡️ Defense (AC):</span>
+                                <span>${effectiveStats.defense}</span>
+                            </div>
                         </div>
                     </div>
-                </div>
+                ` : `
+                    <!-- GEAR TAB: Equipment + Inventory -->
+                    <div style="background: rgba(40, 40, 60, 0.8); padding: 0.75rem; border-radius: 6px; border: 1px solid #9a4;">
+                        <div style="font-weight: bold; color: #da6; margin-bottom: 0.5rem; font-size: 0.9rem;">⚔️ EQUIPMENT</div>
+                        ${this.renderEquipmentSlot('weapon', '🗡️', equipment.weapon)}
+                        ${this.renderEquipmentSlot('armor', '🛡️', equipment.armor)}
+                        ${this.renderEquipmentSlot('accessory', '💍', equipment.accessory)}
+                    </div>
 
-                <!-- Equipment Slots -->
-                <div style="background: rgba(40, 40, 60, 0.8); padding: 0.75rem; border-radius: 6px; border: 1px solid #9a4;">
-                    <div style="font-weight: bold; color: #da6; margin-bottom: 0.5rem; font-size: 0.9rem;">⚔️ EQUIPMENT</div>
-                    ${this.renderEquipmentSlot('weapon', '🗡️', equipment.weapon)}
-                    ${this.renderEquipmentSlot('armor', '🛡️', equipment.armor)}
-                    ${this.renderEquipmentSlot('accessory', '💍', equipment.accessory)}
-                </div>
-
-                <!-- Inventory -->
-                <div style="background: rgba(40, 40, 60, 0.8); padding: 0.75rem; border-radius: 6px; border: 1px solid #a4f; flex: 1; min-height: 150px;">
-                    <div style="font-weight: bold; color: #c8f; margin-bottom: 0.5rem; font-size: 0.9rem;">🎒 INVENTORY (${inventory.length})</div>
-                    <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-                        ${inventory.length === 0
+                    <div style="background: rgba(40, 40, 60, 0.8); padding: 0.75rem; border-radius: 6px; border: 1px solid #a4f; flex: 1; min-height: 150px;">
+                        <div style="font-weight: bold; color: #c8f; margin-bottom: 0.5rem; font-size: 0.9rem;">🎒 INVENTORY (${inventory.length})</div>
+                        <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                            ${inventory.length === 0
                 ? '<div style="color: #666; font-size: 0.8rem; text-align: center; padding: 1rem;">Empty</div>'
                 : inventory.map((item: any, index: number) => this.renderInventoryItem(item, index)).join('')
             }
+                        </div>
                     </div>
-                </div>
+                `}
             </div>
         `;
 
@@ -311,6 +336,28 @@ export class InventoryUI {
     }
 
     private attachEventListeners() {
+        // Tab button handlers
+        const tabStats = this.container.querySelector('#tab-stats');
+        const tabGear = this.container.querySelector('#tab-gear');
+
+        if (tabStats) {
+            tabStats.addEventListener('click', () => {
+                if (this.activeTab !== 'stats') {
+                    this.activeTab = 'stats';
+                    this.render();
+                }
+            });
+        }
+
+        if (tabGear) {
+            tabGear.addEventListener('click', () => {
+                if (this.activeTab !== 'gear') {
+                    this.activeTab = 'gear';
+                    this.render();
+                }
+            });
+        }
+
         // Equip buttons
         const equipButtons = this.container.querySelectorAll('.equip-btn');
         console.log('[InventoryUI] Attaching listeners to', equipButtons.length, 'equip buttons');
