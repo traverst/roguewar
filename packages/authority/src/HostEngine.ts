@@ -59,6 +59,16 @@ export class HostEngine {
     private registry: ModRegistry;
     private multiLevelDungeon?: MultiLevelDungeon; // Store multi-level dungeon structure
 
+    // Simultaneous turn system state
+    private turnPhase: 'planning' | 'executing' = 'planning';
+    private pendingActions: Map<string, Action> = new Map(); // playerId -> action
+    private readyPlayers: Set<string> = new Set(); // players who clicked "Ready"
+    private planningTimeRemaining: number = 15; // seconds
+    private planningTimer: ReturnType<typeof setInterval> | null = null;
+    private onPhaseChange: ((phase: string, timeRemaining: number, pendingPlayers: string[]) => void) | null = null;
+    private onDeltaReady: ((delta: AuthorityMessage) => void) | null = null;  // Callback to broadcast delta
+    private static readonly PLANNING_DURATION = 15; // seconds
+
     constructor(seed: number = Date.now(), config?: GameConfig, registry?: ModRegistry, gameName?: string, campaignContext?: { campaignId: string; nodeId: string }) {
         console.log(`[HostEngine] Constructor: seed=${seed}, hasConfig=${!!config}, hasRegistry=${!!registry}, name=${gameName}`);
         this.registry = registry || new ModRegistry();
@@ -203,6 +213,13 @@ export class HostEngine {
         return Array.from(this.connectedPlayers.values());
     }
 
+    /**
+     * Get mapping of peerId → userId for alive player checking
+     */
+    public getPlayerMappings(): Map<string, string> {
+        return new Map(this.connectedPlayers);
+    }
+
     public connect(peerId: string, persistentId?: string): ConnectResult {
         const userId = persistentId || peerId;
         console.log(`[HostEngine.connect] peerId=${peerId}, userId=${userId}`);
@@ -258,7 +275,7 @@ export class HostEngine {
         };
     }
 
-    public processAction(peerId: string, action: Action): AuthorityMessage {
+    public processAction(peerId: string, action: Action, options?: { skipAI?: boolean; skipTurnAdvance?: boolean }): AuthorityMessage {
         // Validation - ensure this connection is mapped to a userId
         let userId = this.connectedPlayers.get(peerId);
 
@@ -383,12 +400,16 @@ export class HostEngine {
 
         console.log('[HostEngine] Finished static enemies');
 
-        // Then process registered AI players and capture their events
-        const aiPlayerEvents = this.processAIActions();
-        events.push(...aiPlayerEvents);
+        // Process AI only if not skipped (for simultaneous turns, AI runs once at end)
+        if (!options?.skipAI) {
+            const aiPlayerEvents = this.processAIActions();
+            events.push(...aiPlayerEvents);
+        }
 
-        // Advance turn once after all actors have had a chance to act
-        this.state = advanceTurn(this.state);
+        // Advance turn only if not skipped (for simultaneous turns, advance once at end)
+        if (!options?.skipTurnAdvance) {
+            this.state = advanceTurn(this.state);
+        }
 
         // Record turn in log
         if (!this.isReplaying) {
@@ -550,5 +571,303 @@ export class HostEngine {
         return this.state.entities
             .filter(e => e.type === EntityType.Player)
             .map(e => ({ id: e.id, pos: e.pos }));
+    }
+
+    // ===== SIMULTANEOUS TURN SYSTEM =====
+
+    /**
+     * Set callback for phase changes (used to broadcast to clients)
+     */
+    public setPhaseChangeCallback(callback: (phase: string, timeRemaining: number, pendingPlayers: string[]) => void): void {
+        this.onPhaseChange = callback;
+    }
+
+    /**
+     * Set callback for when a delta is ready (used to broadcast timer-triggered turn executions)
+     */
+    public setDeltaReadyCallback(callback: (delta: AuthorityMessage) => void): void {
+        this.onDeltaReady = callback;
+    }
+
+    /**
+     * Get current turn phase info
+     */
+    public getTurnPhaseInfo(): { phase: string; timeRemaining: number; pendingPlayers: string[] } {
+        const allPlayerIds = this.getHumanPlayerIds();
+        const pendingPlayers = allPlayerIds.filter(id => !this.pendingActions.has(id));
+        return {
+            phase: this.turnPhase,
+            timeRemaining: this.planningTimeRemaining,
+            pendingPlayers
+        };
+    }
+
+    /**
+     * Get IDs of all human players (not AI)
+     */
+    private getHumanPlayerIds(): string[] {
+        return Array.from(this.connectedPlayers.values())
+            .filter(id => !id.startsWith('ai-'));
+    }
+
+    /**
+     * Queue an action during planning phase
+     * Returns acknowledgment or error
+     */
+    public queueAction(peerId: string, action: Action): AuthorityMessage | null {
+        const userId = this.connectedPlayers.get(peerId);
+        if (!userId) {
+            return { type: 'error', message: "Player not connected" };
+        }
+
+        // Force actorId to the mapped userId
+        action.actorId = userId;
+
+        // Handle join actions immediately (not queued)
+        if (action.type === 'join') {
+            const requestedUserId = action.payload?.userId;
+            const result = this.connect(peerId, requestedUserId);
+            return result.broadcast;
+        }
+
+        // During execution phase, reject new turn-ending actions (but allow free actions)
+        const turnEndingTypes = ['move', 'attack'];
+        const isTurnEndingAction = turnEndingTypes.includes(action.type);
+
+        if (this.turnPhase === 'executing' && isTurnEndingAction) {
+            console.log(`[HostEngine] Turn-ending action rejected - currently executing`);
+            return { type: 'error', message: "Turn is executing, please wait" };
+        }
+
+        // FREE ACTIONS: equip, unequip, use, drop, wait - execute immediately, don't end turn
+        if (!isTurnEndingAction) {
+            console.log(`[HostEngine] Free action from ${userId}:`, action.type);
+            const result = resolveTurn(this.state, action, this.registry);
+            this.state = result.nextState;
+
+            // Broadcast the result immediately
+            return {
+                type: 'delta',
+                turn: this.state.turn,
+                events: result.events,
+                action: action,
+                currentState: this.state
+            };
+        }
+
+        // TURN-ENDING ACTIONS: move, attack - queue until all players have acted
+        console.log(`[HostEngine] Turn-ending action from ${userId}:`, action.type);
+        this.pendingActions.set(userId, action);
+
+        // Check if all players have submitted a turn-ending action
+        const allPlayerIds = this.getHumanPlayerIds();
+        const allSubmitted = allPlayerIds.every(id => this.pendingActions.has(id));
+
+        console.log(`[HostEngine] Turn-ending actions queued: ${this.pendingActions.size}/${allPlayerIds.length}`);
+
+        if (allSubmitted) {
+            console.log(`[HostEngine] All players have acted, executing turn`);
+            return this.executeSimultaneousTurn();
+        }
+
+        // Notify about pending status (but don't execute yet)
+        this.broadcastPhaseUpdate();
+        return null; // No delta yet, action is queued
+    }
+
+    /**
+     * Mark a player as "ready" (locks in their current action)
+     */
+    public markPlayerReady(peerId: string): void {
+        const userId = this.connectedPlayers.get(peerId);
+        if (userId) {
+            this.readyPlayers.add(userId);
+            console.log(`[HostEngine] Player ${userId} marked ready`);
+
+            // If they haven't submitted an action, queue a "wait" action
+            if (!this.pendingActions.has(userId)) {
+                this.pendingActions.set(userId, { type: 'wait', actorId: userId });
+            }
+
+            // Check if all ready
+            const allPlayerIds = this.getHumanPlayerIds();
+            const allReady = allPlayerIds.every(id => this.readyPlayers.has(id));
+
+            if (allReady) {
+                const delta = this.executeSimultaneousTurn();
+                if (this.onDeltaReady) {
+                    this.onDeltaReady(delta);
+                }
+            } else {
+                this.broadcastPhaseUpdate();
+            }
+        }
+    }
+
+    /**
+     * Start a new planning phase (no timer - wait for all players to move/attack)
+     */
+    public startPlanningPhase(): void {
+        this.turnPhase = 'planning';
+        this.pendingActions.clear();
+        this.readyPlayers.clear();
+
+        console.log(`[HostEngine] Planning phase started - waiting for all players to move/attack`);
+
+        // Clear any existing timer (legacy cleanup)
+        if (this.planningTimer) {
+            clearInterval(this.planningTimer);
+            this.planningTimer = null;
+        }
+
+        this.broadcastPhaseUpdate();
+    }
+
+    /**
+     * Broadcast current phase info to all clients
+     */
+    private broadcastPhaseUpdate(): void {
+        if (this.onPhaseChange) {
+            const info = this.getTurnPhaseInfo();
+            this.onPhaseChange(info.phase, info.timeRemaining, info.pendingPlayers);
+        }
+    }
+
+    /**
+     * Execute all queued actions simultaneously
+     */
+    private executeSimultaneousTurn(): AuthorityMessage {
+        // Stop timer
+        if (this.planningTimer) {
+            clearInterval(this.planningTimer);
+            this.planningTimer = null;
+        }
+
+        this.turnPhase = 'executing';
+        console.log(`[HostEngine] Executing ${this.pendingActions.size} queued actions`);
+
+        // Auto-wait for players who didn't submit
+        const allPlayerIds = this.getHumanPlayerIds();
+        for (const playerId of allPlayerIds) {
+            if (!this.pendingActions.has(playerId)) {
+                console.log(`[HostEngine] Auto-wait for ${playerId}`);
+                this.pendingActions.set(playerId, { type: 'wait', actorId: playerId });
+            }
+        }
+
+        // Collect all events from all actions
+        let allEvents: GameEvent[] = [];
+        const processedActions: Action[] = [];
+
+        // Process all player actions
+        for (const [playerId, action] of this.pendingActions) {
+            console.log(`[HostEngine] Processing action for ${playerId}:`, action.type);
+
+            const result = resolveTurn(this.state, action, this.registry);
+            this.state = result.nextState;
+            allEvents.push(...result.events);
+            processedActions.push(action);
+        }
+
+        // Check victory/defeat conditions
+        this.checkVictoryDefeat(allEvents);
+
+        // Process AI enemies
+        const staticEnemyEvents = this.processStaticEnemies();
+        allEvents.push(...staticEnemyEvents);
+
+        // Process AI players
+        const aiPlayerEvents = this.processAIActions();
+        allEvents.push(...aiPlayerEvents);
+
+        // Advance turn
+        this.state = advanceTurn(this.state);
+
+        // Record in log (use first action for log, but note it's simultaneous)
+        if (!this.isReplaying && processedActions.length > 0) {
+            this.gameLog.turns.push({
+                turn: this.state.turn,
+                action: processedActions[0], // Primary action for log
+                events: allEvents,
+                timestamp: Date.now()
+            });
+        }
+
+        // Clear pending actions and ready for next turn
+        this.pendingActions.clear();
+        this.readyPlayers.clear();
+
+        // Start next planning phase immediately (not delayed)
+        // Use setImmediate-style to allow current call stack to complete
+        queueMicrotask(() => this.startPlanningPhase());
+
+        return {
+            type: 'delta',
+            turn: this.state.turn,
+            events: allEvents,
+            action: processedActions[0] || { type: 'wait', actorId: 'system' },
+            currentState: this.state
+        };
+    }
+
+    /**
+     * Process static enemies (from Level Editor) - extracted from processAction
+     */
+    private processStaticEnemies(): GameEvent[] {
+        const events: GameEvent[] = [];
+
+        const staticEnemies = this.state.entities.filter(e =>
+            e.type === EntityType.Enemy &&
+            e.hp > 0 &&
+            e.aiBehavior &&
+            !this.aiPlayers.has(e.id)
+        );
+
+        for (const enemy of staticEnemies) {
+            const bot = new ReactiveBot(enemy.aiBehavior);
+            const perception = createPerception(this.state, enemy.id);
+            const aiAction = bot.decide(perception);
+            aiAction.actorId = enemy.id;
+
+            const enemyResult = resolveTurn(this.state, aiAction);
+            this.state = enemyResult.nextState;
+            events.push(...enemyResult.events);
+        }
+
+        return events;
+    }
+
+    /**
+     * Check victory/defeat conditions
+     */
+    private checkVictoryDefeat(events: GameEvent[]): void {
+        // Check victory - any player on exit
+        for (const playerId of this.getHumanPlayerIds()) {
+            const actor = this.state.entities.find(e => e.id === playerId);
+            if (actor && !this.state.victoryAchieved) {
+                const tile = this.state.dungeon[actor.pos.y]?.[actor.pos.x];
+                if (tile?.type === 'exit') {
+                    this.state.victoryAchieved = true;
+                    events.push({
+                        type: 'victory',
+                        entityId: actor.id,
+                        message: `${actor.id} has reached the exit!`
+                    });
+                }
+            }
+        }
+
+        // Check defeat - all human players dead
+        const humanPlayers = this.state.entities.filter(e =>
+            e.type === EntityType.Player && !e.id.startsWith('ai-') && !e.id.startsWith('enemy_')
+        );
+        const allDead = humanPlayers.length > 0 && humanPlayers.every(p => p.hp <= 0);
+
+        if (allDead && !this.state.victoryAchieved) {
+            events.push({
+                type: 'defeat',
+                message: 'All heroes have fallen!'
+            });
+        }
     }
 }

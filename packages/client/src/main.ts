@@ -971,6 +971,14 @@ async function init() {
     const input = new InputManager();
     const manager = new ClientGameManager(renderer, input, transport, registry);
 
+    // Wire up inventory update callback for CLIENT (same as host)
+    if (inventoryUI) {
+      manager.onInventoryUpdate = (player) => {
+        console.log(`[Main] CLIENT onInventoryUpdate: HP ${player?.hp}/${player?.maxHp}`);
+        inventoryUI.setPlayer(player);
+      };
+    }
+
     // Expose for debugging
     (window as any).manager = manager;
 
@@ -1083,6 +1091,7 @@ async function init() {
       // Update inventory for join mode
       if (mode === 'join' && inventoryUI && state) {
         const player = state.entities?.find((e: any) => e.id === playerName || e.name === playerName);
+        console.log(`[Main] CLIENT inventory update - player HP: ${player?.hp}/${player?.maxHp} (id: ${player?.id})`);
         if (player) {
           inventoryUI.setPlayer(player);
         }
@@ -1184,8 +1193,10 @@ async function init() {
     const combatLog = new CombatLog();
     (window as any).combatLog = combatLog;  // Store for HUD to access
 
+
     // Wire up inventory update callback
     manager.onInventoryUpdate = (player) => {
+      console.log(`[Main] onInventoryUpdate called with player HP: ${player?.hp}/${player?.maxHp} (id: ${player?.id})`);
       inventoryUI.setPlayer(player); // setPlayer already calls render internally
     };
 

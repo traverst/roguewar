@@ -9,6 +9,8 @@ export type ClientMessage = {
     userId: string;
 } | {
     type: 'spectate';
+} | {
+    type: 'ready';  // Player clicked Ready button (locks in action or waits)
 };
 
 export type ServerMessage = {
@@ -25,4 +27,9 @@ export type ServerMessage = {
     initialState: GameState;
     mods: ModManifest[];
     connectedEntityIds: string[];
+} | {
+    type: 'phase';  // Turn phase update for simultaneous turns
+    phase: 'planning' | 'executing';
+    timeRemaining: number;
+    pendingPlayers: string[];  // Players who haven't submitted actions yet
 };

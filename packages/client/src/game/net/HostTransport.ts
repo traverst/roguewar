@@ -1,7 +1,7 @@
 import Peer, { DataConnection } from 'peerjs';
 import { Transport } from './Transport';
 import { ClientMessage, ServerMessage } from './protocol';
-import { HostEngine } from '@roguewar/authority';
+import { HostEngine, TurnCoordinator } from '@roguewar/authority';
 import { ModRegistry } from '@roguewar/rules';
 
 /**
@@ -15,6 +15,9 @@ export class HostTransport implements Transport {
     private connections: Map<string, DataConnection> = new Map();
     private localPlayerId: string | null = null;
     private onLogUpdate: ((log: any) => void) | null = null;
+
+    // Optional turn coordinator for multiplayer simultaneous turns
+    private turnCoordinator: TurnCoordinator | null = null;
 
     // Buffer for messages before callback is registered
     private messageQueue: ServerMessage[] = [];
@@ -89,6 +92,19 @@ export class HostTransport implements Transport {
                                 this.broadcast(broadcast, conn.peer);
                                 if (this.onLogUpdate) this.onLogUpdate(this.engine.getGameLog());
 
+                                // Auto-enable coordinator when second player connects
+                                if (this.connections.size >= 1 && !this.turnCoordinator) {
+                                    this.enableCoordinator();
+                                    // Register host player first (using peerId)
+                                    if (this.localPlayerId) {
+                                        this.turnCoordinator!.registerPlayer(this.localPlayerId);
+                                    }
+                                }
+                                // Register this new player (using peerId, same as processAction receives)
+                                if (this.turnCoordinator) {
+                                    this.turnCoordinator.registerPlayer(conn.peer);
+                                }
+
                             } else if (msg.type === 'spectate') {
                                 console.log("[HostTransport] Processing spectate request from", conn.peer);
                                 this.logger(`Peer connected as SPECTATOR: ${conn.peer}`);
@@ -105,6 +121,10 @@ export class HostTransport implements Transport {
                                 console.log("[HostTransport] Spectate welcome sent");
                             } else if (msg.type === 'action') {
                                 this.processAction(conn.peer, msg.action);
+                            } else if (msg.type === 'ready') {
+                                // Player clicked "Ready" button
+                                console.log("[HostTransport] Player ready:", conn.peer);
+                                this.engine.markPlayerReady(conn.peer);
                             }
                         } catch (e) {
                             console.error("Host Error parsing data", e);
@@ -130,8 +150,57 @@ export class HostTransport implements Transport {
         });
     }
 
+    /**
+     * Enable simultaneous turn coordination for multiplayer
+     * Call this after players have connected
+     */
+    public enableCoordinator(): void {
+        if (!this.turnCoordinator) {
+            this.turnCoordinator = new TurnCoordinator(this.engine);
+            console.log('[HostTransport] TurnCoordinator enabled');
+        }
+    }
+
+    /**
+     * Register a player with the coordinator (call when player joins)
+     */
+    public registerPlayerForCoordination(playerId: string): void {
+        if (this.turnCoordinator) {
+            this.turnCoordinator.registerPlayer(playerId);
+        }
+    }
+
+    /**
+     * Get coordinator status (for UI)
+     */
+    public getCoordinatorStatus(): { waitingFor: string[] } | null {
+        return this.turnCoordinator?.getStatus() ?? null;
+    }
+
     private processAction(playerId: string, action: any) {
+        // If coordinator is enabled, use it (multiplayer simultaneous turns)
+        if (this.turnCoordinator) {
+            const result = this.turnCoordinator.submitAction(playerId, action);
+
+            // null means action was queued, waiting for other players
+            if (result === null) {
+                console.log('[HostTransport] Action queued by coordinator');
+                return;
+            }
+
+            if (result.type === 'delta') {
+                this.broadcast(result);
+                if (this.onLogUpdate) this.onLogUpdate(this.engine.getGameLog());
+            } else if (result.type === 'error') {
+                const conn = this.connections.get(playerId);
+                if (conn) conn.send(result);
+            }
+            return;
+        }
+
+        // Fallback: use engine directly (solo mode or coordinator disabled)
         const result = this.engine.processAction(playerId, action);
+
         if (result.type === 'delta') {
             this.broadcast(result);
             if (this.onLogUpdate) this.onLogUpdate(this.engine.getGameLog());
@@ -168,7 +237,7 @@ export class HostTransport implements Transport {
     }
 
     send(msg: ClientMessage): void {
-        // Host sending an action (loopback)
+        // Host sending a message (loopback)
         if (msg.type === 'action' && this.localPlayerId) {
             this.processAction(this.localPlayerId, msg.action);
         }

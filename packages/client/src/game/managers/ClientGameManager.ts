@@ -19,6 +19,7 @@ export class ClientGameManager {
     public onGameStateChanged: ((state: GameState, connectedIds: string[]) => void) | null = null;
     public onGameEnd: ((outcome: 'victory' | 'defeat') => void) | null = null;
     public onInventoryUpdate: ((player: any) => void) | null = null;
+    public onPhaseChange: ((phase: string, timeRemaining: number, pendingPlayers: string[]) => void) | null = null;
 
     constructor(renderer: CanvasRenderer, input: InputManager, transport: Transport, registry: ModRegistry | null = null) {
         this.renderer = renderer;
@@ -63,6 +64,12 @@ export class ClientGameManager {
 
             } else if (msg.type === 'delta') {
                 this.handleDelta(msg);
+            } else if (msg.type === 'phase') {
+                // Simultaneous turn phase update
+                console.log(`[Client] Phase update: ${msg.phase}, ${msg.timeRemaining}s remaining, waiting for: ${msg.pendingPlayers.join(', ')}`);
+                if (this.onPhaseChange) {
+                    this.onPhaseChange(msg.phase, msg.timeRemaining, msg.pendingPlayers);
+                }
             } else if (msg.type === 'error') {
                 console.error("Server Error:", msg.message);
                 // CRITICAL FIX: Unlock input on error so user can retry!
@@ -95,11 +102,20 @@ export class ClientGameManager {
 
         this.predictedState = JSON.parse(JSON.stringify(this.authoritativeState));
 
-        // CRITICAL CHECK: Unblock local player if this was their action OR if the turn advanced
-        // We also simply unlock on ANY state update to be safe against desyncs, 
-        // as long as the state is fresh.
+        // DEBUG: Log HP values after state update
+        if (this.localPlayerId) {
+            const myEntity = this.predictedState.entities.find((e: any) => e.id === this.localPlayerId);
+            console.log(`[Client] After state update - My entity HP: ${myEntity?.hp}/${myEntity?.maxHp} (id: ${this.localPlayerId})`);
+        }
+
+        // CRITICAL: In simultaneous turns, the delta's action might be another player's
+        // but we should still unlock if we were waiting (the turn has executed)
         if (msg.action.actorId === this.localPlayerId) {
             console.log(`[Client] ✅ Unlocking input. My action confirmed.`);
+            this.isWaitingForServer = false;
+        } else if (this.isWaitingForServer) {
+            // Simultaneous turn executed - unlock even if action is another player's
+            console.log(`[Client] ✅ Unlocking input. Simultaneous turn executed (action was ${msg.action.actorId}).`);
             this.isWaitingForServer = false;
         } else {
             // Identity Consummation: If this is a JOIN action for a user we claimed, switch identity
@@ -160,8 +176,15 @@ export class ClientGameManager {
                 const { nextState } = resolveTurn(this.predictedState, action, this.registry || undefined);
                 this.predictedState = nextState;
 
-                this.isWaitingForServer = true;
-                console.log("[Client] Input Locked. Waiting for server...");
+                // Lock input for turn-ending actions (move/attack)
+                // Free actions (equip/use/drop) don't lock - player can do multiple
+                const turnEndingActions = ['move', 'attack'];
+                if (turnEndingActions.includes(action.type)) {
+                    this.isWaitingForServer = true;
+                    console.log("[Client] Turn-ending action sent - input locked until turn executes");
+                } else {
+                    console.log("[Client] Free action sent - no input lock");
+                }
 
                 this.net.send({
                     type: 'action',
@@ -169,8 +192,10 @@ export class ClientGameManager {
                     action
                 });
             }
-        } else {
-            // console.log("Waiting for server..."); 
+        }
+        else {
+            // Clear any pending input when locked - don't queue actions!
+            this.input.getAndClearAction();
         }
 
         this.renderer.render(this.predictedState, this.localPlayerId);
@@ -182,5 +207,13 @@ export class ClientGameManager {
                 this.onInventoryUpdate(player);
             }
         }
+    }
+
+    /**
+     * Send a "ready" message to lock in current action (or auto-wait)
+     */
+    public sendReady(): void {
+        console.log('[Client] Sending Ready');
+        this.net.send({ type: 'ready' });
     }
 }
