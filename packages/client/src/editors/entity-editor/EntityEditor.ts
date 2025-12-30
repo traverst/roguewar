@@ -557,11 +557,15 @@ export class EntityEditor {
 
         // Save to library
         console.log('[EntityEditor] Saving entity to library:', this.entity.id, 'sprite:', this.entity.sprite);
+
+        // Get emoji icon from sprite template
+        const icon = this.getSpriteEmoji();
+
         ContentLibrary.saveItem({
             id: this.entity.id,
             name: this.entity.name,
             type: 'entity',
-            data: { ...this.entity } // deep copy to avoid reference issues
+            data: { ...this.entity, icon } // Include icon for rendering
         });
         this.renderLibrary();
 

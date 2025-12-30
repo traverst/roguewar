@@ -17,6 +17,8 @@ export interface EntityTemplate {
     id: string; // e.g., 'goblin', 'dragon'
     name: string;
     type: EntityType;
+    icon?: string;  // Visual icon emoji for rendering (e.g., '👺')
+    sprite?: string;  // Sprite template name (e.g., 'goblin', 'orc')
     hp: number;
     maxHp: number;
     attack: number;

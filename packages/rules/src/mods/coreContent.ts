@@ -12,6 +12,7 @@ export const CORE_CONTENT: ContentPack = {
             id: 'player',
             name: 'Hero',
             type: EntityType.Player,
+            icon: '🧙',  // Wizard/mage icon for player
             hp: 100,
             maxHp: 100,
             attack: 0,  // Base attack bonus (to-hit)
@@ -29,6 +30,7 @@ export const CORE_CONTENT: ContentPack = {
             id: 'goblin',
             name: 'Goblin',
             type: EntityType.Enemy,
+            icon: '👺',  // Goblin/demon mask
             hp: 30,
             maxHp: 30,
             attack: 0,  // Base attack bonus (to-hit)

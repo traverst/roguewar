@@ -14,6 +14,7 @@ export interface DungeonDefinition {
     tiles: TileType[][];
     playerSpawn: Position;
     enemySpawns: Position[];
+    items?: Array<{ id: string; x: number; y: number }>;  // Items placed in the level
     zones?: DungeonZone[];
     metadata?: {
         author?: string;

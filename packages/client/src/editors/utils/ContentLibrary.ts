@@ -157,8 +157,8 @@ export class ContentLibrary {
      */
     static renderLibraryPanel(
         type: LibraryItem['type'],
-        onLoad: (item: LibraryItem) => void,
-        onDelete: (id: string) => void
+        _onLoad: (item: LibraryItem) => void,
+        _onDelete: (id: string) => void
     ): string {
         const items = this.getItems(type);
 
@@ -241,7 +241,7 @@ export class ContentLibrary {
      * @param panelElement - The specific panel element to attach listeners to (prevents duplicate listeners across editors)
      */
     static attachLibraryListeners(
-        type: LibraryItem['type'],
+        _type: LibraryItem['type'],
         onLoad: (item: LibraryItem) => void,
         onRefresh: () => void,
         panelElement?: HTMLElement

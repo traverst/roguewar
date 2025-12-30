@@ -934,7 +934,7 @@ export class LevelEditor {
             tiles: this.tiles,
             playerSpawn: this.playerSpawn || undefined as any,  // Allow undefined for optional spawn
             enemySpawns: this.enemySpawns,
-            items: this.placedItems as any // Add placed items to export
+            items: this.placedItems  // Items placed in the level
         };
 
         const result = validateDungeon(dungeon);
