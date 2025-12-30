@@ -106,9 +106,13 @@ export class ClientGameManager {
         if (this.localPlayerId) {
             const myEntity = this.predictedState.entities.find((e: any) => e.id === this.localPlayerId);
             console.log(`[Client] After state update - My entity HP: ${myEntity?.hp}/${myEntity?.maxHp} (id: ${this.localPlayerId})`);
+
+            // Update inventory UI when state changes (not every frame!)
+            if (this.onInventoryUpdate && myEntity) {
+                this.onInventoryUpdate(myEntity);
+            }
         }
 
-        // CRITICAL: In simultaneous turns, the delta's action might be another player's
         // but we should still unlock if we were waiting (the turn has executed)
         if (msg.action.actorId === this.localPlayerId) {
             console.log(`[Client] ✅ Unlocking input. My action confirmed.`);
@@ -200,13 +204,7 @@ export class ClientGameManager {
 
         this.renderer.render(this.predictedState, this.localPlayerId);
 
-        // Update inventory UI if callback is set
-        if (this.onInventoryUpdate && this.localPlayerId) {
-            const player = this.predictedState.entities.find(e => e.id === this.localPlayerId);
-            if (player) {
-                this.onInventoryUpdate(player);
-            }
-        }
+        // onInventoryUpdate moved to handleDelta to only fire on state changes, not every frame
     }
 
     /**

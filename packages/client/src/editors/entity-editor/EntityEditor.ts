@@ -19,7 +19,8 @@ export class EntityEditor {
         color: '#f85149',
         sprite: 'goblin',
         tags: [],
-        inventory: { slots: [] }  // Loot items this entity drops on death
+        inventory: { slots: [] },  // Loot items this entity drops on death
+        equipment: { slots: {} }    // Equipped weapons and armor
     };
 
     private spriteTemplate: string = 'goblin';
@@ -291,6 +292,40 @@ export class EntityEditor {
                     </div>
                     
                     <div class="panel">
+                        <div class="panel-title">⚔️ Equipment</div>
+                        <div style="margin-bottom: var(--spacing-md);">
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: var(--spacing-sm);">
+                                🗡️ Weapon Slot
+                            </div>
+                            <select id="equipment-weapon-select" class="form-select" style="width: 100%;">
+                                <option value="">-- No weapon equipped --</option>
+                                ${this.getLibraryWeaponOptions()}
+                            </select>
+                            <button id="btn-equip-weapon" class="btn btn-success" style="width: 100%; margin-top: var(--spacing-xs);">Equip Weapon</button>
+                            <div id="equipped-weapon-display" style="margin-top: var(--spacing-xs);">
+                                ${this.renderEquippedWeapon()}
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: var(--spacing-sm);">
+                                🛡️ Armor Slot
+                            </div>
+                            <select id="equipment-armor-select" class="form-select" style="width: 100%;">
+                                <option value="">-- No armor equipped --</option>
+                                ${this.getLibraryArmorOptions()}
+                            </select>
+                            <button id="btn-equip-armor" class="btn btn-success" style="width: 100%; margin-top: var(--spacing-xs);">Equip Armor</button>
+                            <div id="equipped-armor-display" style="margin-top: var(--spacing-xs);">
+                                ${this.renderEquippedArmor()}
+                            </div>
+                        </div>
+                        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: var(--spacing-sm);">
+                            💡 Enemy spawns with this equipment
+                        </div>
+                    </div>
+                    
+                    <div class="panel">
                         <div class="panel-title">🎁 Loot Drops</div>
                         <div style="margin-bottom: var(--spacing-sm);">
                             <select id="loot-item-select" class="form-select" style="width: 100%;">
@@ -469,6 +504,23 @@ export class EntityEditor {
         document.getElementById('btn-import')?.addEventListener('click', () => this.importEntity());
         document.getElementById('btn-reset')?.addEventListener('click', () => this.resetEntity());
 
+        // Equipment buttons
+        document.getElementById('btn-equip-weapon')?.addEventListener('click', () => {
+            const select = document.getElementById('equipment-weapon-select') as HTMLSelectElement;
+            if (select && select.value) {
+                this.equipWeapon(select.value);
+                select.value = '';
+            }
+        });
+
+        document.getElementById('btn-equip-armor')?.addEventListener('click', () => {
+            const select = document.getElementById('equipment-armor-select') as HTMLSelectElement;
+            if (select && select.value) {
+                this.equipArmor(select.value);
+                select.value = '';
+            }
+        });
+
         // Loot panel
         document.getElementById('btn-add-loot')?.addEventListener('click', () => {
             const select = document.getElementById('loot-item-select') as HTMLSelectElement;
@@ -622,6 +674,62 @@ export class EntityEditor {
         input.click();
     }
 
+    private getLibraryWeaponOptions(): string {
+        const items = ContentLibrary.getItems('item');
+        const weapons = items.filter((item: any) => item.data?.type === 'weapon');
+        if (weapons.length === 0) {
+            return '<option value="" disabled>No weapons in library - create some in Item Editor</option>';
+        }
+        return weapons.map((item: any) =>
+            `<option value="${item.id}">${item.data?.icon || '⚔️'} ${item.name}</option>`
+        ).join('');
+    }
+
+    private getLibraryArmorOptions(): string {
+        const items = ContentLibrary.getItems('item');
+        const armors = items.filter((item: any) => item.data?.type === 'armor');
+        if (armors.length === 0) {
+            return '<option value="" disabled>No armor in library - create some in Item Editor</option>';
+        }
+        return armors.map((item: any) =>
+            `<option value="${item.id}">${item.data?.icon || '🛡️'} ${item.name}</option>`
+        ).join('');
+    }
+
+    private renderEquippedWeapon(): string {
+        const weapon = (this.entity as any).equipment?.slots?.weapon;
+        if (!weapon) {
+            return '<div style="color: var(--text-secondary); font-size: 0.8rem; font-style: italic;">No weapon equipped</div>';
+        }
+        return `
+            <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-tertiary); padding: var(--spacing-xs); border-radius: var(--radius-sm);">
+                <div style="display: flex; align-items: center; gap: var(--spacing-xs);">
+                    <span>${weapon.icon || '⚔️'}</span>
+                    <span style="font-size: 0.85rem;">${weapon.name}</span>
+                    <span style="font-size: 0.75rem; color: var(--text-secondary);">${weapon.damage || ''}</span>
+                </div>
+                <button class="btn-unequip-weapon" style="background: #a44; border: none; color: #fff; padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 0.7rem;">✕</button>
+            </div>
+        `;
+    }
+
+    private renderEquippedArmor(): string {
+        const armor = (this.entity as any).equipment?.slots?.armor;
+        if (!armor) {
+            return '<div style="color: var(--text-secondary); font-size: 0.8rem; font-style: italic;">No armor equipped</div>';
+        }
+        return `
+            <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-tertiary); padding: var(--spacing-xs); border-radius: var(--radius-sm);">
+                <div style="display: flex; align-items: center; gap: var(--spacing-xs);">
+                    <span>${armor.icon || '🛡️'}</span>
+                    <span style="font-size: 0.85rem;">${armor.name}</span>
+                    <span style="font-size: 0.75rem; color: var(--text-secondary);">AC +${armor.armorBonus || 0}</span>
+                </div>
+                <button class="btn-unequip-armor" style="background: #a44; border: none; color: #fff; padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 0.7rem;">✕</button>
+            </div>
+        `;
+    }
+
     private getLibraryItemOptions(): string {
         const items = ContentLibrary.getItems('item');
         if (items.length === 0) {
@@ -658,6 +766,61 @@ export class EntityEditor {
                     const index = parseInt((btn as HTMLElement).dataset.index || '0');
                     this.removeLootItem(index);
                 });
+            });
+        }
+    }
+
+    private equipWeapon(itemId: string): void {
+        const libraryItem = ContentLibrary.getItem(itemId) as any;
+        if (libraryItem && libraryItem.data) {
+            if (!(this.entity as any).equipment) {
+                (this.entity as any).equipment = { slots: {} };
+            }
+            // Store complete item data
+            (this.entity as any).equipment.slots.weapon = {
+                ...libraryItem.data,
+                itemId: libraryItem.id
+            };
+            console.log('[EntityEditor] Equipped weapon:', libraryItem.name);
+            this.refreshEquipmentDisplay();
+        }
+    }
+
+    private equipArmor(itemId: string): void {
+        const libraryItem = ContentLibrary.getItem(itemId) as any;
+        if (libraryItem && libraryItem.data) {
+            if (!(this.entity as any).equipment) {
+                (this.entity as any).equipment = { slots: {} };
+            }
+            // Store complete item data
+            (this.entity as any).equipment.slots.armor = {
+                ...libraryItem.data,
+                itemId: libraryItem.id
+            };
+            console.log('[EntityEditor] Equipped armor:', libraryItem.name);
+            this.refreshEquipmentDisplay();
+        }
+    }
+
+    private refreshEquipmentDisplay(): void {
+        const weaponDisplay = document.getElementById('equipped-weapon-display');
+        const armorDisplay = document.getElementById('equipped-armor-display');
+
+        if (weaponDisplay) {
+            weaponDisplay.innerHTML = this.renderEquippedWeapon();
+            // Re-attach unequip button listener
+            weaponDisplay.querySelector('.btn-unequip-weapon')?.addEventListener('click', () => {
+                (this.entity as any).equipment.slots.weapon = null;
+                this.refreshEquipmentDisplay();
+            });
+        }
+
+        if (armorDisplay) {
+            armorDisplay.innerHTML = this.renderEquippedArmor();
+            // Re-attach unequip button listener
+            armorDisplay.querySelector('.btn-unequip-armor')?.addEventListener('click', () => {
+                (this.entity as any).equipment.slots.armor = null;
+                this.refreshEquipmentDisplay();
             });
         }
     }

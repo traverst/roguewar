@@ -29,6 +29,11 @@ export interface Entity {
     attack: number;
     defense?: number;
     aiBehavior?: string; // Optional: For AI debugging/visualization
+    statusEffects?: Array<{  // Temporary status effects
+        type: 'stunned' | 'poisoned' | 'blessed' | 'cursed';
+        duration: number;
+        source?: string;
+    }>;
 
     // Phase 11a additions
     inventory?: Inventory;

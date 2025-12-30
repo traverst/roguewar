@@ -80,8 +80,10 @@ export class CombatLog {
         }
 
         // Reverse groups (newest first) but keep items within each group in order
+        // Add separator between groups
         return groups.reverse().map(group =>
-            group.map(msg => this.formatMessage(msg)).join('')
+            group.map(msg => this.formatMessage(msg)).join('') +
+            '<hr style="border: none; border-top: 1px solid #46a; margin: 8px 0; opacity: 0.5;">'
         ).join('');
     }
 
@@ -151,8 +153,21 @@ export class CombatLog {
         }
     }
 
-    logDamage(target: string, damage: number, diceNotation?: string, rolls?: number[]) {
-        const diceText = rolls && diceNotation ? ` (${diceNotation}: [${rolls.join('+')}])` : '';
+    logDamage(target: string, damage: number, diceNotation?: string, rolls?: number[], isCritical: boolean = false) {
+        let diceText = '';
+
+        if (rolls && diceNotation) {
+            if (isCritical && rolls.length >= 2) {
+                // For crits, show both dice rolls highlighted
+                const half = Math.floor(rolls.length / 2);
+                const firstRolls = rolls.slice(0, half);
+                const critRolls = rolls.slice(half);
+                diceText = ` (${diceNotation}: [${firstRolls.join('+')}] + CRIT:[${critRolls.join('+')}])`;
+            } else {
+                diceText = ` (${diceNotation}: [${rolls.join('+')}])`;
+            }
+        }
+
         this.addMessage(`${target} takes ${damage} damage${diceText}`, 'damage');
     }
 

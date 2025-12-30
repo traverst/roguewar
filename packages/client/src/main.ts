@@ -282,7 +282,7 @@ async function init() {
             const instanceId = `${entityId}_${index}_${Date.now()}`;
 
             // Merge template data with spawn position
-            return {
+            const entity: any = {
               ...entityData.data,      // All current stats from library (hp, attack, aiBehavior, etc.)
               type: entityData.data.type || 'enemy',  // Ensure type is set for AI recognition
               id: instanceId,          // Unique ID for each instance
@@ -290,6 +290,30 @@ async function init() {
               name: spawn.name || entityData.data.name || entityData.name,
               pos: { x: spawn.x, y: spawn.y },  // Position from spawn
             };
+
+            // Initialize inventory if not present (enemies need this for combat system)
+            if (!entity.inventory) {
+              entity.inventory = {
+                slots: [],
+                capacity: entityData.data.inventoryCapacity || 10
+              };
+            }
+
+            // Initialize equipment - use template equipment if available
+            if (!entity.equipment) {
+              entity.equipment = entityData.data.equipment || { slots: {} };
+            } else if (entityData.data.equipment) {
+              // Merge template equipment with any existing
+              entity.equipment = {
+                ...entity.equipment,
+                slots: {
+                  ...entity.equipment.slots,
+                  ...entityData.data.equipment.slots
+                }
+              };
+            }
+
+            return entity;
           }).filter(Boolean); // Remove null entities
 
           console.log('[Main] Entities enriched from library:', state.entities);
@@ -1245,7 +1269,19 @@ async function init() {
 
             if (event.hit && event.damage > 0) {
               console.log('[Main] Logging damage:', targetName, event.damage);
-              combatLog.logDamage(targetName, event.damage);
+
+              // Find damage/critical_hit event to get dice rolls
+              const damageEvent = delta.events.find((e: any) =>
+                (e.type === 'damage' || e.type === 'critical_hit') && e.entityId === event.attackerId
+              );
+
+              combatLog.logDamage(
+                targetName,
+                event.damage,
+                damageEvent?.damageNotation,
+                damageEvent?.damageRolls,
+                event.critical  // Pass critical flag to highlight double rolls
+              );
             }
           }
 

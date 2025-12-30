@@ -73,6 +73,29 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
     const actor = state.entities.find(e => e.id === action.actorId);
 
     if (actor && actor.hp > 0) {
+        // === CHECK FOR STUNNED STATUS ===
+        // Stunned entities still take their turn (for multiplayer), but can't act
+        const isStunned = actor.statusEffects?.some(e => e.type === 'stunned' && e.duration > 0);
+        if (isStunned) {
+            console.log(`[Core] ${actor.name || actor.id} is stunned and cannot act!`);
+            events.push({
+                type: 'stunned',
+                entityId: actor.id,
+                message: `${actor.name || actor.id} is stunned and cannot act!`
+            } as any);
+
+            // Tick status effects at end of stunned turn
+            if (actor.statusEffects) {
+                actor.statusEffects.forEach(effect => {
+                    effect.duration = Math.max(0, effect.duration - 1);
+                });
+                actor.statusEffects = actor.statusEffects.filter(e => e.duration > 0);
+            }
+
+            // Return early - turn consumed but no action taken
+            return { nextState: state, events };
+        }
+
         if (action.type === 'move') {
             const { dx, dy } = action.payload;
             const targetX = actor.pos.x + dx;
@@ -118,16 +141,35 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
                             if (item) {
                                 const itemId = (item as any).itemId || (item as any).id;
                                 // Pass full item data so dropped loot keeps name, icon, type, stats
-                                const { quantity: _q, itemId: _id, ...restItemData } = item as any;
-                                console.log('[Core] LOOT DROP - item:', item, 'restItemData:', restItemData);
-                                // Mark as loot so renderer shows 🎁 until picked up
-                                createGroundItem(state, itemId, target.pos, 1, { ...restItemData, isLoot: true });
-                                events.push({
-                                    type: 'item_drop' as any,
-                                    entityId: target.id,
+                                const groundItem = {
+                                    id: `ground_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Generate unique ID
                                     itemId,
-                                    quantity: 1
+                                    pos: { x: target.pos.x, y: target.pos.y }, // Use pos object
+                                    quantity: (item as any).quantity || 1, // Preserve quantity if available, else 1
+                                    // Preserve all item properties (name, icon, damage, armorBonus, etc.)
+                                    name: (item as any).name || itemId,
+                                    icon: (item as any).icon,
+                                    type: (item as any).type,
+                                    damage: (item as any).damage,
+                                    armorBonus: (item as any).armorBonus,
+                                    armorType: (item as any).armorType,
+                                    description: (item as any).description,
+                                    rarity: (item as any).rarity,
+                                    isLoot: true, // Mark as loot
+                                    // Copy any other custom properties
+                                    ...(item as any)
+                                };
+                                if (!state.groundItems) state.groundItems = [];
+                                state.groundItems.push(groundItem);
+                                events.push({
+                                    type: 'item_dropped',
+                                    entityId: target.id, // Add entityId for context
+                                    itemId,
+                                    x: target.pos.x,
+                                    y: target.pos.y,
+                                    quantity: groundItem.quantity
                                 });
+                                console.log(`[Core] Dropped loot: ${groundItem.name} at (${target.pos.x}, ${target.pos.y})`);
                             }
                         }
                     }

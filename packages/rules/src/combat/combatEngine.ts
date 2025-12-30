@@ -39,6 +39,12 @@ export function resolveAttack(
 
     // Get weapon attack bonus
     const weapon = getEquippedWeapon(attacker);
+    console.log('[Combat] ========== WEAPON CHECK ==========');
+    console.log('[Combat] Attacker:', attacker.name || attacker.id);
+    console.log('[Combat] Equipment slots:', attacker.equipment?.slots);
+    console.log('[Combat] Retrieved weapon:', weapon);
+    console.log('[Combat] Weapon damage property:', weapon?.damage);
+    console.log('[Combat] ===================================');
     const weaponAttackBonus = weapon?.attackBonus || 0;
 
     const totalAttackRoll = attackRoll.total + attackBonus + dexMod + weaponAttackBonus;
@@ -61,11 +67,22 @@ export function resolveAttack(
     console.log(`[Combat] Target AC: ${targetAC} (base:${BASE_AC} + armor:${armorBonus} + magic:${magicBonus} + dex:${targetDexMod})`);
 
     // === STEP 3: CHECK HIT ===
-    // Natural 1 = automatic miss
+    // Natural 1 = automatic miss + fumble consequence
     if (naturalRoll === 1) {
-        console.log('[Combat] FUMBLE! Natural  1 - auto miss');
+        console.log('[Combat] FUMBLE! Natural 1 - auto miss + stunned');
+
+        // Apply stunned status effect (loses next turn)
+        if (!attacker.statusEffects) {
+            attacker.statusEffects = [];
+        }
+        attacker.statusEffects.push({
+            type: 'stunned',
+            duration: 1,  // Loses next turn
+            source: 'fumble'
+        });
+
         events.push({
-            type: 'damage',
+            type: 'fumble',
             entityId: attacker.id,
             amount: 0,
             miss: true,
@@ -98,6 +115,8 @@ export function resolveAttack(
     // === STEP 4: DAMAGE ROLL ===
     // Get weapon damage dice
     const weaponDamage = weapon?.damage || '1d4'; // Default punch damage
+    console.log('[Combat] Weapon data:', weapon);
+    console.log('[Combat] Weapon damage dice:', weaponDamage, 'from weapon?.damage =', weapon?.damage);
     const damageRoll = rollDice(weaponDamage);
 
     // Get strength modifier
