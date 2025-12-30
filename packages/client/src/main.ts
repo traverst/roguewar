@@ -1285,6 +1285,22 @@ async function init() {
             }
           }
 
+          // Handle fumble events
+          if (event.type === 'fumble') {
+            console.log('[Main] Found fumble event!', event);
+            const attackerName = event.attackerName || event.entityId || 'Unknown';
+            const targetName = event.targetName || 'Unknown';
+            combatLog.logAttack(
+              attackerName,
+              targetName,
+              1,  // Natural 1
+              event.targetAC || 0,
+              false,  // not a hit
+              false,  // not a critical
+              true    // IS a fumble
+            );
+          }
+
           // Handle death events
           if (event.type === 'killed') {
             console.log('[Main] Entity killed event:', event.entityId, event.entityName);

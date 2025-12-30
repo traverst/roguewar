@@ -109,23 +109,28 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
                     const combatResult = resolveAttack(actor, target, DEFAULT_STAT_DEFINITIONS);
                     target.hp -= combatResult.damage;
 
-                    // Add combat events with full details for combat log
-                    const combatEvent = combatResult.events.find((e: any) => e.type === 'damage' || e.type === 'critical_hit');
-                    const attackedEvent = {
-                        type: 'attacked',
-                        attackerId: actor.id,
-                        attackerName: actor.name || actor.id,
-                        targetId: target.id,
-                        targetName: target.name || target.id,
-                        damage: combatResult.damage,
-                        attackRoll: combatEvent?.attackRoll,
-                        targetAC: combatEvent?.targetAC,
-                        hit: !(combatEvent?.miss),
-                        critical: combatEvent?.type === 'critical_hit',
-                        fumble: combatEvent?.fumble
-                    };
-                    console.log('[Core] ATTACK EVENT:', attackedEvent);
-                    events.push(attackedEvent);
+                    // Check if this was a fumble - fumble events have their own display
+                    const isFumble = combatResult.events.some((e: any) => e.type === 'fumble');
+
+                    // Only add attacked event for non-fumbles (fumbles already have their own event)
+                    if (!isFumble) {
+                        const combatEvent = combatResult.events.find((e: any) => e.type === 'damage' || e.type === 'critical_hit');
+                        const attackedEvent = {
+                            type: 'attacked',
+                            attackerId: actor.id,
+                            attackerName: actor.name || actor.id,
+                            targetId: target.id,
+                            targetName: target.name || target.id,
+                            damage: combatResult.damage,
+                            attackRoll: combatEvent?.attackRoll,
+                            targetAC: combatEvent?.targetAC,
+                            hit: !(combatEvent?.miss),
+                            critical: combatEvent?.type === 'critical_hit',
+                            fumble: false
+                        };
+                        console.log('[Core] ATTACK EVENT:', attackedEvent);
+                        events.push(attackedEvent);
+                    }
                     events.push(...combatResult.events as any[]);
 
                     if (target.hp <= 0) {

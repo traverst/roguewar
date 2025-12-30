@@ -84,6 +84,8 @@ export function resolveAttack(
         events.push({
             type: 'fumble',
             entityId: attacker.id,
+            attackerName: (attacker as any).name || attacker.id,
+            targetName: (target as any).name || target.id,
             amount: 0,
             miss: true,
             fumble: true,
