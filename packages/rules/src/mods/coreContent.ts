@@ -14,8 +14,8 @@ export const CORE_CONTENT: ContentPack = {
             type: EntityType.Player,
             hp: 100,
             maxHp: 100,
-            attack: 0,  // Base attack bonus
-            defense: 10,  // Base AC (lower is better)
+            attack: 0,  // Base attack bonus (to-hit)
+            defense: 0,  // Base defense bonus (AC = 10 + defense + dex)
             strength: 12,
             dexterity: 14,
             constitution: 13,
@@ -31,8 +31,8 @@ export const CORE_CONTENT: ContentPack = {
             type: EntityType.Enemy,
             hp: 30,
             maxHp: 30,
-            attack: 0,  // Base attack bonus
-            defense: 8,  // AC (lower is better)
+            attack: 0,  // Base attack bonus (to-hit)
+            defense: 0,  // Base defense bonus (AC = 10 + defense + dex)
             strength: 10,
             dexterity: 12,
             constitution: 10,
@@ -86,7 +86,8 @@ export const CORE_CONTENT: ContentPack = {
             name: 'Leather Armor',
             description: 'Basic protection',
             rarity: 'common',
-            defense: 3
+            armorBonus: 2,  // Light armor: +2 AC
+            armorType: 'light'
         }
     ]
 };

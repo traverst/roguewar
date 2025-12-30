@@ -42,10 +42,18 @@ export function getEffectiveStats(entity: any): Record<string, number> {
         // NOTE: weapon.damage (dice notation like "1d8") is NOT added to attack stat
         // It's used directly in combat engine for damage rolls!
 
-        // Add defence from armor
-        if (equippedItem.defence) {
-            stats.defense = (stats.defense || 0) + equippedItem.defence;
-            console.log(`[CombatHelpers] Added defence: ${equippedItem.defence}, new defense: ${stats.defense}`);
+        // Add armor bonus to defense stat (supports multiple field names)
+        const armorValue = equippedItem.armorBonus || equippedItem.defense || equippedItem.defence || 0;
+        if (armorValue) {
+            stats.defense = (stats.defense || 0) + armorValue;
+            console.log(`[CombatHelpers] Added armor bonus: ${armorValue}, new defense: ${stats.defense}`);
+        }
+
+        // Add magic bonus from armor
+        const magicValue = equippedItem.magicBonus || 0;
+        if (magicValue) {
+            stats.defense = (stats.defense || 0) + magicValue;
+            console.log(`[CombatHelpers] Added magic bonus: ${magicValue}, new defense: ${stats.defense}`);
         }
 
         // Add custom properties

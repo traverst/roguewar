@@ -61,7 +61,7 @@ export class InventoryUI {
             wisdom: (this.player as any).wisdom || 10,
             charisma: (this.player as any).charisma || 10,
             attack: this.player.attack || 0,
-            defense: (this.player as any).defense || 10  // Base AC 10 (lower is better)
+            defense: (this.player as any).defense || 10  // Base AC 10 (D20: higher = harder to hit)
         };
 
         // Calculate equipment bonuses - use any to support dynamic stat properties
@@ -78,10 +78,17 @@ export class InventoryUI {
                     weaponDamage = equippedItem.damage;
                 }
 
-                // Armor SUBTRACTS from defense (lower AC = tougher)
-                if (equippedItem.defence) {
-                    console.log('[InventoryUI] Subtracting defence:', equippedItem.defence);
-                    effectiveStats.defense -= equippedItem.defence;  // Subtract, not add!
+                // Armor ADDS to defense (D20 system: higher AC = harder to hit)
+                const armorValue = equippedItem.armorBonus || equippedItem.defense || equippedItem.defence || 0;
+                if (armorValue) {
+                    console.log('[InventoryUI] Adding armor bonus:', armorValue);
+                    effectiveStats.defense += armorValue;
+                }
+
+                // Magic bonus from armor
+                if (equippedItem.magicBonus) {
+                    console.log('[InventoryUI] Adding magic bonus:', equippedItem.magicBonus);
+                    effectiveStats.defense += equippedItem.magicBonus;
                 }
 
                 // Support explicit bonus properties

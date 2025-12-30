@@ -74,12 +74,20 @@ export function getEquipmentStats(equipment: Equipment, getItem: (id: string) =>
         const item = getItem(itemId);
         if (!item) continue;
 
-        // Add item stats to modifiers
-        if (item.damage) {
-            modifiers.attack = (modifiers.attack || 0) + item.damage;
+        // Add weapon attack bonus (to-hit bonus, NOT damage dice)
+        if (item.attackBonus) {
+            modifiers.attack = (modifiers.attack || 0) + item.attackBonus;
         }
-        if (item.defense) {
-            modifiers.defense = (modifiers.defense || 0) + item.defense;
+
+        // Add armor bonuses (supports multiple field names for backwards compatibility)
+        const armorValue = item.armorBonus || item.defense || 0;
+        if (armorValue) {
+            modifiers.defense = (modifiers.defense || 0) + armorValue;
+        }
+
+        // Add magic bonus from armor
+        if (item.magicBonus) {
+            modifiers.defense = (modifiers.defense || 0) + item.magicBonus;
         }
     }
 

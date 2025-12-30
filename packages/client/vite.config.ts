@@ -8,7 +8,8 @@ const __dirname = path.dirname(__filename);
 export default defineConfig({
     server: {
         host: true, // Listen on all network interfaces
-        port: 5173
+        port: 5173,
+        strictPort: true  // Don't switch ports - prevents localStorage confusion
     },
     resolve: {
         alias: {

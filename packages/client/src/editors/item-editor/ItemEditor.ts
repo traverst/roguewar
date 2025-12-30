@@ -168,6 +168,18 @@ export class ItemEditor {
         ContentLibrary.attachLibraryListeners('item', (item) => {
             console.log('[ItemEditor] Item loaded from library:', item);
             this.item = item.data;
+
+            // Migration: ensure armor items have armorBonus set based on armorType
+            if (this.item.type === 'armor' && (this.item.armorBonus === undefined || this.item.armorBonus === 0)) {
+                const armorBonusMap: Record<string, number> = {
+                    'light': 2,
+                    'medium': 4,
+                    'heavy': 6
+                };
+                this.item.armorBonus = armorBonusMap[this.item.armorType || 'light'];
+                console.log(`[ItemEditor] Migrated armorBonus to ${this.item.armorBonus} for ${this.item.armorType} armor`);
+            }
+
             this.render();
             const messagesDiv = document.getElementById('validation-messages');
             if (messagesDiv) {
@@ -413,8 +425,9 @@ export class ItemEditor {
                     this.item.icon = '⚔️';
                     break;
                 case 'armor':
-                    this.item.defense = 5;
-                    this.item.armorType = 'medium';
+                    this.item.armorType = 'light';
+                    this.item.armorBonus = 2; // Light armor default
+                    this.item.magicBonus = 0;
                     this.item.icon = '🛡️';
                     break;
                 case 'consumable':
@@ -564,7 +577,23 @@ export class ItemEditor {
         });
 
         document.getElementById('armor-type')?.addEventListener('change', (e) => {
-            this.item.armorType = (e.target as HTMLSelectElement).value as ItemTemplate['armorType'];
+            const armorType = (e.target as HTMLSelectElement).value as ItemTemplate['armorType'];
+            this.item.armorType = armorType;
+
+            // Auto-set armor bonus based on type (D&D style)
+            const armorBonusMap: Record<string, number> = {
+                'light': 2,
+                'medium': 4,
+                'heavy': 6
+            };
+            this.item.armorBonus = armorBonusMap[armorType || 'light'];
+
+            // Update the slider and display
+            const armorBonusSlider = document.getElementById('armor-bonus') as HTMLInputElement;
+            const armorBonusValue = document.getElementById('armor-bonus-value');
+            if (armorBonusSlider) armorBonusSlider.value = this.item.armorBonus.toString();
+            if (armorBonusValue) armorBonusValue.textContent = this.item.armorBonus.toString();
+
             this.updatePreview();
         });
 

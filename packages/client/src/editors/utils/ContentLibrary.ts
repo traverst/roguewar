@@ -26,6 +26,13 @@ export class ContentLibrary {
     }
 
     /**
+     * Get all items from the library (no type filter)
+     */
+    static getAllItems(): LibraryItem[] {
+        return this.loadLibrary();
+    }
+
+    /**
      * Save an item to the library
      */
     static saveItem(item: Omit<LibraryItem, 'created' | 'modified'>): void {

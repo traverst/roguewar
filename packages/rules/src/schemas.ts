@@ -43,18 +43,42 @@ export interface DungeonZone {
  */
 export interface ItemTemplate {
     id: string;
-    type: 'weapon' | 'armor' | 'consumable' | 'key_item';
+    type: 'weapon' | 'armor' | 'consumable' | 'key_item' | 'quest';
     name: string;
     description?: string;
-    rarity: 'common' | 'uncommon' | 'rare' | 'legendary' | 'unique';
+    rarity: 'common' | 'uncommon' | 'rare' | 'legendary' | 'unique' | 'epic';
 
-    // Combat properties
-    damage?: number;
-    damageType?: 'physical' | 'fire' | 'ice' | 'lightning' | 'poison';
-    defense?: number;
+    // Combat properties (legacy)
+    damage?: number | string;  // Can be dice notation like "1d8"
+    damageType?: 'physical' | 'fire' | 'ice' | 'lightning' | 'poison' | 'slashing' | 'piercing' | 'bludgeoning';
+    defense?: number;  // Legacy field
+
+    // Weapon properties (D20 system)
+    attackBonus?: number;      // To-hit bonus
+    attackSpeed?: 'slow' | 'normal' | 'fast';
+    lightArmorBonus?: number;  // Extra damage vs light armor
+    mediumArmorBonus?: number; // Extra damage vs medium armor
+    heavyArmorBonus?: number;  // Extra damage vs heavy armor
+
+    // Armor properties (D20 system: AC = 10 + armorBonus + magicBonus + dexMod)
+    armorBonus?: number;       // Base AC bonus (Light +2, Medium +4, Heavy +6)
+    magicBonus?: number;       // Magic enhancement (+1, +2, +3, etc.)
+    armorType?: 'light' | 'medium' | 'heavy';
+
+    // Consumable properties
+    healAmount?: number;
+    manaAmount?: number;
+    durationTurns?: number;
+
+    // Quest item properties
+    questItem?: boolean;
+    questFlags?: string[];
 
     // Status effects
     appliesStatus?: StatusEffect[];
+
+    // Custom properties for bonuses
+    customProperties?: Record<string, any>;
 
     // Visual
     icon?: string;

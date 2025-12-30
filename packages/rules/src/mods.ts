@@ -24,6 +24,24 @@ export interface EntityTemplate {
     description?: string;
     inventoryCapacity?: number; // Phase 11a
     visionRange?: number;       // Phase 11a
+
+    // D&D Ability Scores
+    strength?: number;
+    dexterity?: number;
+    constitution?: number;
+    intelligence?: number;
+    wisdom?: number;
+    charisma?: number;
+
+    // AI Behavior Configuration
+    aiBehavior?: {
+        movementPattern?: 'stationary' | 'patrol' | 'wander' | 'chase';
+        detectionRange?: number;
+        attackRange?: number;
+        aggressionLevel?: number;
+        fleeThreshold?: number;
+        groupBehavior?: 'independent' | 'pack' | 'defensive';
+    };
 }
 
 export interface TileTemplate {

@@ -12,7 +12,7 @@ export class LevelEditor {
     private height = 50;
     private tileSize = 16;
     private tiles: TileType[][] = [];
-    private playerSpawn = { x: 5, y: 5 };
+    private playerSpawn: { x: number; y: number } | null = null;
     private enemySpawns: { x: number; y: number; entityId?: string; entityName?: string; index?: number }[] = [];
     private placedEntities: { id: string; name: string; index: number }[] = [];
     private currentTool: ToolType = 'floor';
@@ -786,6 +786,7 @@ export class LevelEditor {
                 this.tiles[y][x] = 'floor';
             }
         }
+        this.playerSpawn = null;  // Clear player spawn when filling floor
         this.drawGrid();
     }
 
@@ -931,7 +932,7 @@ export class LevelEditor {
             width: this.width,
             height: this.height,
             tiles: this.tiles,
-            playerSpawn: this.playerSpawn,
+            playerSpawn: this.playerSpawn || undefined as any,  // Allow undefined for optional spawn
             enemySpawns: this.enemySpawns,
             items: this.placedItems as any // Add placed items to export
         };

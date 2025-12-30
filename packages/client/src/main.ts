@@ -34,6 +34,10 @@ async function init() {
 
   const registry = await ModLoader.loadPacks([CORE_CONTENT]);
 
+  // Expose ContentLibrary globally for use by game engine and UI
+  (window as any).ContentLibrary = ContentLibrary;
+  console.log('[Main] ContentLibrary exposed globally');
+
   // Initialize meta-game system
   const metaGame = new MetaGameContext();
   await metaGame.init();
