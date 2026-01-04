@@ -30,7 +30,7 @@ export interface Entity {
     defense?: number;
     aiBehavior?: string; // Optional: For AI debugging/visualization
     statusEffects?: Array<{  // Temporary status effects
-        type: 'stunned' | 'poisoned' | 'blessed' | 'cursed';
+        type: 'stunned' | 'poisoned' | 'blessed' | 'cursed' | 'sleeping';
         duration: number;
         source?: string;
     }>;
@@ -87,7 +87,7 @@ export interface GameEvent {
 
 export type ActionType = 'move' | 'attack' | 'wait' | 'join' | 'use_stairs'
     | 'pickup_item' | 'drop_item' | 'equip_item' | 'unequip_item' | 'use_item'
-    | 'level_up';  // Allocate attribute/skill points from level-up
+    | 'level_up' | 'sleep';  // Allocate attribute/skill points from level-up
 
 export interface Action {
     type: ActionType;

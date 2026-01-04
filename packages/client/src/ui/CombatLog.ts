@@ -63,8 +63,8 @@ export class CombatLog {
         let currentGroup: Array<{ text: string; type: string }> = [];
 
         for (const msg of this.messages) {
-            // Attack types start new groups
-            if (['hit', 'miss', 'critical', 'fumble'].includes(msg.type)) {
+            // Attack types and major events start new groups
+            if (['hit', 'miss', 'critical', 'fumble', 'sleeping', 'message', 'status_effect'].includes(msg.type)) {
                 if (currentGroup.length > 0) {
                     groups.push(currentGroup);
                 }
@@ -119,6 +119,14 @@ export class CombatLog {
             case 'death':
                 color = '#f44';
                 icon = '💀';
+                break;
+            case 'sleeping':
+                color = '#aaf';
+                icon = '💤';
+                break;
+            case 'message':
+                color = '#ffc';
+                icon = '📢';
                 break;
         }
 

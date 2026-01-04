@@ -1330,6 +1330,19 @@ async function init() {
             const entityName = event.entityName || event.entityId || 'Unknown';
             combatLog.addMessage(`💀 ${entityName} has been slain!`, 'death');
           }
+
+          // Handle generic messages
+          if (event.type === 'message') {
+            console.log('[Main] Message event:', event.message);
+            combatLog.addMessage(event.message, 'message');
+          }
+
+          // Handle status effects
+          if (event.type === 'status_effect') {
+            console.log('[Main] Status effect event:', event.message);
+            // Use event.effect as type if supported (e.g., 'sleeping'), otherwise default info
+            combatLog.addMessage(event.message, event.effect || 'info');
+          }
         });
       }
     };
@@ -1491,10 +1504,28 @@ async function init() {
       content += '<button id="btn-save-game" style="padding: 4px 8px; background: #2a3a2a; color: #4f6; border: 1px solid #4f6; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">💾 Save</button>';
     }
     content += '<button id="btn-quit" style="padding: 4px 8px; background: #a33; border: none; color: white; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">Quit to Lobby</button>';
+    // Sleep button (Zzz)
+    content += '<button id="btn-sleep" style="padding: 4px 8px; background: #4a4a6aad; border: 1px solid #6a6a9a; color: #aae; border-radius: 4px; cursor: pointer; font-size: 0.8rem;" title="Sleep to restore HP (Must be safe)">💤 Sleep</button>';
     content += '</div>';
 
     hud.innerHTML = content;
     app.appendChild(hud);
+
+    // Wired events
+    setTimeout(() => {
+      const btnSleep = document.getElementById('btn-sleep');
+      if (btnSleep) {
+        btnSleep.onclick = () => {
+          const manager = (window as any).manager;
+          if (manager && userId) {
+            console.log('[HUD] Sleep requested for', userId);
+            manager.sendAction({ type: 'sleep', actorId: userId });
+          } else {
+            console.warn('[HUD] Cannot sleep: manager or userId missing');
+          }
+        };
+      }
+    }, 0);
 
     // Create combat log at MID-LEFT (separate from HUD)
     console.log('[Main] createHUD: Checking for combatLog...', (window as any).combatLog);

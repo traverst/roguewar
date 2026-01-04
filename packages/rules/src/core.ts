@@ -469,6 +469,40 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
                 }
             }
         }
+        else if (action.type === 'sleep') {
+            // Check for nearby enemies (radius 8)
+            const safeDistance = 8;
+            const enemiesNearby = state.entities.some(e =>
+                e.type === 'enemy' &&
+                e.hp > 0 &&
+                Math.abs(e.pos.x - actor.pos.x) <= safeDistance &&
+                Math.abs(e.pos.y - actor.pos.y) <= safeDistance
+            );
+
+            if (enemiesNearby) {
+                events.push({
+                    type: 'message' as any,
+                    entityId: actor.id,
+                    message: "Cannot sleep: Enemies nearby!"
+                });
+                console.log(`[Core] ${actor.id} failed to sleep: enemies nearby`);
+            } else {
+                // Apply sleeping status
+                if (!actor.statusEffects) actor.statusEffects = [];
+                actor.statusEffects.push({
+                    type: 'sleeping',
+                    duration: 100, // Long duration, wakes on full HP or interrupt
+                    source: 'action'
+                });
+                events.push({
+                    type: 'status_effect' as any,
+                    entityId: actor.id,
+                    effect: 'sleeping',
+                    message: "You fall asleep..."
+                });
+                console.log(`[Core] ${actor.id} fell asleep`);
+            }
+        }
     }
 
     // === LEVEL-UP ACTION ===
@@ -619,6 +653,54 @@ export function advanceTurn(initialState: GameState): GameState {
 
     const rng = mulberry32(state.seed);
     state.seed = Math.floor(rng() * 4294967296);
+
+    // REGENERATION & STATUS UPDATES
+    if (state.entities) {
+        state.entities.forEach(entity => {
+            if (entity.hp <= 0) return;
+
+            // 1. Passive Regeneration (Every 10 turns)
+            // Formula: 1 + ConMod (min 1)
+            if (state.turn % 10 === 0 && entity.hp < entity.maxHp) {
+                const con = (entity as any).constitution || 10;
+                const conMod = Math.floor((con - 10) / 2);
+                const regen = Math.max(1, 1 + conMod);
+                entity.hp = Math.min(entity.maxHp, entity.hp + regen);
+            }
+
+            // 2. Sleep Status Tick
+            // Heals rapidly, wakes checks
+            const isSleeping = entity.statusEffects?.some(e => e.type === 'sleeping');
+            if (isSleeping) {
+                // Check if enemies are too close (Wake up interrupt)
+                const safeDistance = 6;
+                const enemiesNear = state.entities.some(e =>
+                    e.id !== entity.id &&
+                    e.type === 'enemy' &&
+                    e.hp > 0 &&
+                    Math.abs(e.pos.x - entity.pos.x) <= safeDistance &&
+                    Math.abs(e.pos.y - entity.pos.y) <= safeDistance
+                );
+
+                if (enemiesNear) {
+                    // Startled awake!
+                    entity.statusEffects = entity.statusEffects?.filter(e => e.type !== 'sleeping');
+                    // No event log from advanceTurn, but UI will reflect status change
+                } else {
+                    // Deep Rest Healing
+                    // Heal 10% or min 5 + level
+                    const level = entity.level || 1;
+                    const healAmount = Math.max(5 + level, Math.floor(entity.maxHp * 0.1));
+                    entity.hp = Math.min(entity.maxHp, entity.hp + healAmount);
+
+                    // Wake if fully rested
+                    if (entity.hp >= entity.maxHp) {
+                        entity.statusEffects = entity.statusEffects?.filter(e => e.type !== 'sleeping');
+                    }
+                }
+            }
+        });
+    }
 
     return state;
 }

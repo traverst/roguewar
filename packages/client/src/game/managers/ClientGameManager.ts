@@ -214,4 +214,12 @@ export class ClientGameManager {
         console.log('[Client] Sending Ready');
         this.net.send({ type: 'ready' });
     }
+
+    /**
+     * Send an action from UI interactions (Inventory, HUD, etc)
+     */
+    public sendAction(action: Action): void {
+        console.log('[Client] UI Action queued via sendAction:', action);
+        this.input.nextAction = action;
+    }
 }
