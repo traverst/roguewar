@@ -10,6 +10,7 @@ export class InventoryUI {
     private onEquipCallback: ((itemId: string, slot: string) => void) | null = null;
     private onUnequipCallback: ((slot: string) => void) | null = null;
     private onDropCallback: ((itemIndex: number) => void) | null = null;
+    private onLevelUpClickCallback: (() => void) | null = null;
 
     constructor(container: HTMLElement) {
         this.container = container;
@@ -17,12 +18,17 @@ export class InventoryUI {
     }
 
     setPlayer(player: any) {
-        // Re-render if inventory OR HP changed
+        // Re-render if inventory, HP, or XP/level changed
         const currentStateJson = JSON.stringify({
             inventory: player?.inventory,
             hp: player?.hp,
             maxHp: player?.maxHp,
-            equipment: player?.equipment
+            equipment: player?.equipment,
+            // Experience system fields
+            xp: player?.xp,
+            level: player?.level,
+            unspentAttributePoints: player?.unspentAttributePoints,
+            unspentSkillPoints: player?.unspentSkillPoints
         });
         if (currentStateJson === this.previousInventoryJson && this.player) {
             return; // No change, skip re-render
@@ -41,6 +47,56 @@ export class InventoryUI {
         this.onEquipCallback = onEquip;
         this.onUnequipCallback = onUnequip;
         this.onDropCallback = onDrop || null;
+    }
+
+    setLevelUpCallback(callback: () => void) {
+        this.onLevelUpClickCallback = callback;
+    }
+
+    /**
+     * Renders XP bar and level display for experience system
+     */
+    private renderXPSection(): string {
+        const levelThresholds = [0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500];
+        const playerXP = this.player?.xp || 0;
+        const playerLevel = this.player?.level || 1;
+        const currentThreshold = levelThresholds[playerLevel - 1] || 0;
+        const nextThreshold = levelThresholds[playerLevel] || currentThreshold + 500;
+        const xpIntoLevel = playerXP - currentThreshold;
+        const xpNeeded = nextThreshold - currentThreshold;
+        const xpPercent = Math.min(100, Math.floor((xpIntoLevel / xpNeeded) * 100));
+
+        const unspentAttr = this.player?.unspentAttributePoints || 0;
+        const unspentSkill = this.player?.unspentSkillPoints || 0;
+        const hasUnspent = unspentAttr > 0 || unspentSkill > 0;
+
+        return `
+            <div style="display: flex; justify-content: space-between; margin-top: 0.25rem;">
+                <span style="color: #fc6;">⭐ Level:</span>
+                <span style="color: #fff; font-weight: bold;">${playerLevel}</span>
+            </div>
+            <div style="margin-top: 0.25rem;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                    <span style="color: #8cf; font-size: 0.75rem;">✨ XP:</span>
+                    <span style="font-size: 0.75rem; color: #aaa;">${xpIntoLevel} / ${xpNeeded}</span>
+                </div>
+                <div style="background: #333; border-radius: 3px; height: 6px; overflow: hidden;">
+                    <div style="background: linear-gradient(90deg, #48f, #8cf); width: ${xpPercent}%; height: 100%; transition: width 0.3s;"></div>
+                </div>
+            </div>
+            ${hasUnspent ? `
+                <div id="level-up-btn" style="background: rgba(255, 200, 0, 0.2); border: 1px solid #fc6; border-radius: 4px; padding: 0.35rem; margin-top: 0.35rem; cursor: pointer; transition: all 0.2s;"
+                     onmouseenter="this.style.background='rgba(255, 200, 0, 0.4)'"
+                     onmouseleave="this.style.background='rgba(255, 200, 0, 0.2)'">
+                    <div style="color: #fc6; font-weight: bold; font-size: 0.8rem;">⬆️ LEVEL UP! (click to allocate)</div>
+                    <div style="font-size: 0.75rem; color: #fff;">
+                        ${unspentAttr > 0 ? `+${unspentAttr} Attribute Points` : ''}
+                        ${unspentAttr > 0 && unspentSkill > 0 ? '<br>' : ''}
+                        ${unspentSkill > 0 ? `+${unspentSkill} Skill Points` : ''}
+                    </div>
+                </div>
+            ` : ''}
+        `;
     }
 
     private render() {
@@ -178,6 +234,7 @@ export class InventoryUI {
                                 <span style="color: #f88;">❤️ HP:</span>
                                 <span style="color: #fff; font-weight: bold;">${this.player.hp}/${this.player.maxHp || this.player.hp}</span>
                             </div>
+                            ${this.renderXPSection()}
                         </div>
                     </div>
 
@@ -362,6 +419,14 @@ export class InventoryUI {
                     this.activeTab = 'gear';
                     this.render();
                 }
+            });
+        }
+
+        // Level-up button click
+        const levelUpBtn = this.container.querySelector('#level-up-btn');
+        if (levelUpBtn && this.onLevelUpClickCallback) {
+            levelUpBtn.addEventListener('click', () => {
+                this.onLevelUpClickCallback?.();
             });
         }
 

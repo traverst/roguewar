@@ -4,6 +4,7 @@ A browser-based **peer-to-peer multiplayer roguelike** with deterministic gamepl
 
 ## ✨ Features
 
+### Core Gameplay
 - 🎮 **P2P Multiplayer**: Host and join games directly in the browser using PeerJS - no central server required
 - 👥 **Spectator Mode**: Watch ongoing games and switch between different player perspectives
 - 💾 **Save & Resume**: Games are automatically saved to localStorage and can be resumed anytime
@@ -11,6 +12,30 @@ A browser-based **peer-to-peer multiplayer roguelike** with deterministic gamepl
 - 🎯 **Deterministic Game Logic**: Pure, testable game rules shared between all peers
 - 📱 **Network Play**: Access games from any device on your local network
 - 🎨 **Canvas Renderer**: Smooth HTML5 Canvas-based graphics
+
+### D&D-Style Combat System
+- ⚔️ **Attack Rolls**: d20-based attack system with modifiers (DEX, STR, weapon bonuses)
+- 🛡️ **Armor Class**: Defense calculated from base AC + armor bonuses + DEX modifier
+- 💥 **Critical Hits**: Natural 20 automatically hits and deals double damage (rolls damage dice twice)
+- 💢 **Fumbles**: Natural 1 automatically misses and stuns the attacker for 1 turn
+- 🎲 **Dice Notation**: Full dice roll support (1d6, 2d8+3, etc.) for weapons and damage
+- 📊 **Combat Log**: Real-time combat log with detailed attack rolls, damage breakdowns, and visual separators
+
+### Status Effects System
+- 😵 **Stunned**: Skip next action (from fumbles) - entity still takes turn for multiplayer compatibility
+- 🧪 **Extensible**: Framework supports poison, blessed, cursed, and other effects
+
+### Equipment & Inventory
+- 🗡️ **Weapon System**: Equip weapons with damage dice (1d4, 1d6, 1d8, etc.)
+- 🛡️ **Armor System**: Equip armor with AC bonuses (+2 light, +4 medium, etc.)
+- 🎒 **Equipment Slots**: Weapon and armor slots for both players and enemies
+- 💀 **Loot Drops**: Equipped items drop when enemies die - pick up their weapons!
+
+### Content Editors
+- 👹 **Entity Editor**: Create custom enemies with stats, AI behavior, and equipment
+- 🗡️ **Item Editor**: Design weapons, armor, and consumables with custom stats
+- 🗺️ **Level Editor**: Build dungeons with tile placement and enemy spawns
+- 📚 **Content Library**: Save and reuse content across different levels
 
 ## 🏗️ Architecture
 

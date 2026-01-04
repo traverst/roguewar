@@ -1223,9 +1223,12 @@ async function init() {
 
 
     // Wire up inventory update callback
+    // Also cache player for level-up modal access
+    let cachedPlayerForLevelUp: any = null;
     manager.onInventoryUpdate = (player) => {
       console.log(`[Main] onInventoryUpdate called with player HP: ${player?.hp}/${player?.maxHp} (id: ${player?.id})`);
       inventoryUI.setPlayer(player); // setPlayer already calls render internally
+      cachedPlayerForLevelUp = player; // Cache for level-up modal
     };
 
     // Wire up combat log to receive events from deltas
@@ -1339,10 +1342,34 @@ async function init() {
       }
     );
 
+    // === Level-Up UI Integration ===
+    // Import and create LevelUpUI for allocating attribute/skill points
+    const { LevelUpUI } = await import('./ui/LevelUpUI');
+    const levelUpUI = new LevelUpUI(document.body);
+
+    // Wire up callback to submit level_up action
+    levelUpUI.setCallback((allocation) => {
+      console.log('[Main] Level-up allocation:', allocation);
+      input.nextAction = {
+        type: 'level_up' as any,
+        actorId: '',
+        payload: { allocations: allocation }
+      };
+    });
+
+    // Wire up InventoryUI level-up button to open modal
+    // Uses cachedPlayerForLevelUp from onInventoryUpdate above
+    inventoryUI.setLevelUpCallback(() => {
+      if (cachedPlayerForLevelUp) {
+        levelUpUI.show(cachedPlayerForLevelUp);
+      }
+    });
+
     // Expose for debugging
     (window as any).manager = manager;
     (window as any).inventoryUI = inventoryUI;
     (window as any).combatLog = combatLog;
+    (window as any).levelUpUI = levelUpUI;
 
     // Handle game end (victory/defeat)
     manager.onGameEnd = async (outcome) => {

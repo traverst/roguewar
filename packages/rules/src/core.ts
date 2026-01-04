@@ -136,6 +136,64 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
                     if (target.hp <= 0) {
                         events.push({ type: 'killed', entityId: target.id, entityName: target.name || target.id });
 
+                        // === GRANT XP TO ATTACKER ===
+                        // Calculate XP value (use enemy's xpValue or calculate from stats)
+                        const xpValue = target.xpValue ?? Math.floor(10 + ((target.maxHp || 10) / 5) + ((target.attack || 0) * 2));
+
+                        // Grant XP to attacker (immutable update)
+                        const oldXP = actor.xp || 0;
+                        const oldLevel = actor.level || 1;
+                        actor.xp = oldXP + xpValue;
+
+                        // Simple level calculation (100 XP per level, scales up)
+                        // Level thresholds: 0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500
+                        const levelThresholds = [0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500];
+                        let newLevel = 1;
+                        for (let i = 0; i < levelThresholds.length; i++) {
+                            if (actor.xp >= levelThresholds[i]) {
+                                newLevel = i + 1;
+                            }
+                        }
+
+                        // Check for level up
+                        if (newLevel > oldLevel) {
+                            actor.level = newLevel;
+
+                            // Grant rewards for each level gained
+                            const attrPointsPerLevel = 2;
+                            const skillPointsPerLevel = (newLevel % 2 === 1) ? 1 : 0; // Skill points on odd levels
+                            const hpPerLevel = 5;
+
+                            for (let lvl = oldLevel + 1; lvl <= newLevel; lvl++) {
+                                actor.unspentAttributePoints = (actor.unspentAttributePoints || 0) + attrPointsPerLevel;
+                                if (lvl % 2 === 1) {
+                                    actor.unspentSkillPoints = (actor.unspentSkillPoints || 0) + skillPointsPerLevel;
+                                }
+                                actor.maxHp = (actor.maxHp || 100) + hpPerLevel;
+                                actor.hp = Math.min(actor.hp + hpPerLevel, actor.maxHp); // Heal for HP bonus
+                            }
+
+                            events.push({
+                                type: 'level_up',
+                                entityId: actor.id,
+                                oldLevel,
+                                newLevel,
+                                attributePoints: actor.unspentAttributePoints,
+                                skillPoints: actor.unspentSkillPoints
+                            } as any);
+                            console.log(`[Core] LEVEL UP! ${actor.name || actor.id}: ${oldLevel} -> ${newLevel}`);
+                        }
+
+                        events.push({
+                            type: 'xp_gained',
+                            entityId: actor.id,
+                            amount: xpValue,
+                            source: `kill:${target.templateId || target.id}`,
+                            totalXP: actor.xp,
+                            level: actor.level || newLevel
+                        } as any);
+                        console.log(`[Core] XP gained: ${actor.name || actor.id} +${xpValue} XP (total: ${actor.xp})`);
+
                         // Drop loot when enemy dies - inventory items and equipped items
                         const lootItems = [
                             ...(target.inventory?.slots || []),
@@ -410,6 +468,66 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
                     }
                 }
             }
+        }
+    }
+
+    // === LEVEL-UP ACTION ===
+    // Apply attribute and skill point allocations from level-up UI
+    if (action.type === 'level_up' && actor) {
+        // Allocations come from action.payload.allocations (from main.ts)
+        const payload = (action as any).payload || {};
+        const allocations = payload.allocations || (action as any).allocations || {};
+        const attrAllocations = allocations.attributes || {};
+        const skillAllocations = allocations.skills || {};
+
+        console.log(`[Core] Processing level_up for ${actor.id}:`, allocations);
+
+        // Calculate total points being spent
+        const attrPointsSpent = Object.values(attrAllocations).reduce((sum: number, v: any) => sum + (v || 0), 0);
+        const skillPointsSpent = Object.values(skillAllocations).reduce((sum: number, v: any) => sum + (v || 0), 0);
+
+        // Validate player has enough points
+        if (attrPointsSpent > (actor.unspentAttributePoints || 0)) {
+            events.push({ type: 'error', message: 'Not enough attribute points' } as any);
+        } else if (skillPointsSpent > (actor.unspentSkillPoints || 0)) {
+            events.push({ type: 'error', message: 'Not enough skill points' } as any);
+        } else {
+            // Apply attribute allocations
+            for (const [attr, amount] of Object.entries(attrAllocations)) {
+                const numAmount = amount as number;
+                if (numAmount > 0) {
+                    (actor as any)[attr] = ((actor as any)[attr] || 10) + numAmount;
+                    console.log(`[Core] Level-up: ${actor.id} +${numAmount} ${attr} = ${(actor as any)[attr]}`);
+                }
+            }
+
+            // Apply skill allocations
+            if (!actor.skills) actor.skills = {};
+            for (const [skill, amount] of Object.entries(skillAllocations)) {
+                const numAmount = amount as number;
+                if (numAmount > 0) {
+                    actor.skills[skill] = (actor.skills[skill] || 0) + numAmount;
+                    console.log(`[Core] Level-up: ${actor.id} +${numAmount} ${skill} skill = ${actor.skills[skill]}`);
+                }
+            }
+
+            // Deduct spent points
+            actor.unspentAttributePoints = (actor.unspentAttributePoints || 0) - attrPointsSpent;
+            actor.unspentSkillPoints = (actor.unspentSkillPoints || 0) - skillPointsSpent;
+
+            // Apply CON bonus to max HP if constitution increased
+            if (attrAllocations.constitution) {
+                const conBonus = attrAllocations.constitution as number;
+                actor.maxHp = (actor.maxHp || 100) + conBonus;
+                actor.hp = Math.min(actor.hp + conBonus, actor.maxHp);
+            }
+
+            events.push({
+                type: 'level_up_applied',
+                entityId: actor.id,
+                attributes: attrAllocations,
+                skills: skillAllocations
+            } as any);
         }
     }
 

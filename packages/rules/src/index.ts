@@ -14,3 +14,7 @@ export * from './validation';
 export * from './inventory';
 export * from './equipment';
 export * from './vision';
+
+// Experience & Progression System
+export * from './progression';
+export * from './xpEngine';

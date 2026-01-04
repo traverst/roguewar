@@ -137,6 +137,16 @@ export class EntityEditor {
                             </label>
                             <input type="range" class="form-slider" id="entity-defense" min="0" max="15" value="${this.entity.defense || 10}" />
                         </div>
+                        <div class="form-group">
+                            <label class="form-label">
+                                ✨ XP Value (reward when killed)
+                                <span class="slider-value" id="xp-value">${(this.entity as any).xpValue || 10}</span>
+                            </label>
+                            <input type="range" class="form-slider" id="entity-xp" min="1" max="100" value="${(this.entity as any).xpValue || 10}" />
+                            <div style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 0.25rem;">
+                                💡 Auto-calculated if left at 10
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="panel">
@@ -415,6 +425,7 @@ export class EntityEditor {
             this.entity.attack = parseInt((document.getElementById('entity-attack') as HTMLInputElement).value);
             (this.entity as any).damage = (document.getElementById('entity-damage') as HTMLInputElement).value;
             this.entity.defense = parseInt((document.getElementById('entity-defense') as HTMLInputElement).value);
+            (this.entity as any).xpValue = parseInt((document.getElementById('entity-xp') as HTMLInputElement)?.value || '10');
             this.entity.color = (document.getElementById('entity-color') as HTMLInputElement).value;
 
             const tagsInput = (document.getElementById('entity-tags') as HTMLInputElement).value;
@@ -446,6 +457,7 @@ export class EntityEditor {
             { id: 'entity-charisma', valueId: 'charisma-value' },
             { id: 'entity-attack', valueId: 'attack-value' },
             { id: 'entity-defense', valueId: 'defense-value' },
+            { id: 'entity-xp', valueId: 'xp-value' },
             { id: 'entity-detection', valueId: 'detection-value' },
             { id: 'entity-range', valueId: 'range-value' },
             { id: 'entity-aggression', valueId: 'aggression-value', isPercent: true },

@@ -39,6 +39,20 @@ export interface Entity {
     inventory?: Inventory;
     equipment?: Equipment;
     vision?: VisionProfile;
+
+    // Experience & Progression System
+    xp?: number;                    // Current total XP earned
+    level?: number;                 // Current level (1-based)
+    xpValue?: number;               // XP granted when this entity is killed (for enemies)
+    pendingRewards?: Array<{        // Queued rewards from level-up (not yet applied)
+        type: 'AttributePoints' | 'SkillPoints' | 'MaxHP' | 'AbilityUnlock' | 'PassiveModifier';
+        amount?: number;
+        abilityId?: string;
+        modifierId?: string;
+    }>;
+    unspentAttributePoints?: number;
+    unspentSkillPoints?: number;
+    skills?: Record<string, number>;  // Skill name -> level
 }
 
 export interface GameState {
@@ -72,7 +86,8 @@ export interface GameEvent {
 }
 
 export type ActionType = 'move' | 'attack' | 'wait' | 'join' | 'use_stairs'
-    | 'pickup_item' | 'drop_item' | 'equip_item' | 'unequip_item' | 'use_item';
+    | 'pickup_item' | 'drop_item' | 'equip_item' | 'unequip_item' | 'use_item'
+    | 'level_up';  // Allocate attribute/skill points from level-up
 
 export interface Action {
     type: ActionType;
