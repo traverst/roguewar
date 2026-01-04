@@ -320,6 +320,25 @@ async function init() {
         }
         console.log(`[Main] Loaded ${state.entities.length} entities from level data`);
 
+        // CRITICAL: Sync enriched data back to gameLog config for proper save/restore
+        // Without this, restore uses raw levelData instead of enriched entities
+        const gameLog = (engine as any).gameLog;
+        if (gameLog?.config?.customLevel) {
+          // Store the enriched entities directly (not just spawn positions)
+          gameLog.config.customLevel.enrichedEntities = state.entities.map((e: any) => ({
+            ...e,
+            // Ensure pos is stored correctly
+            x: e.pos?.x ?? e.x,
+            y: e.pos?.y ?? e.y,
+            pos: e.pos
+          }));
+          // Store enriched groundItems
+          gameLog.config.customLevel.enrichedItems = state.groundItems;
+          // Store player spawn point
+          gameLog.config.customLevel.playerSpawn = { x: spawnX, y: spawnY };
+          console.log('[Main] Synced enriched entities and items to gameLog for save/restore');
+        }
+
         console.log(`[Main] Level tiles injected into engine, player will spawn at ${spawnX}, ${spawnY}`)
           ;
       }

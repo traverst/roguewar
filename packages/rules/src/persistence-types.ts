@@ -33,4 +33,6 @@ export interface GameLog {
     };
     config: GameConfig;
     turns: TurnRecord[];
+    // Complete state snapshot for reliable restore (action replay is non-deterministic for complex state)
+    stateSnapshot?: GameState;
 }

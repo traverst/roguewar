@@ -101,6 +101,16 @@ export class HostEngine {
     }
 
     private createInitialState(seed: number): GameState {
+        // Check for custom level data (from Level Editor / Quick Play)
+        // This ensures saved games with designer levels restore correctly
+        const customLevel = (this.gameLog.config as any).customLevel;
+        console.log('[HostEngine] createInitialState: hasCustomLevel=', !!customLevel,
+            'configKeys=', Object.keys(this.gameLog.config));
+        if (customLevel) {
+            console.log('[HostEngine] Creating state from custom level data (restore-safe)');
+            return this.createStateFromCustomLevel(customLevel, seed);
+        }
+
         // Check if multi-level config is specified
         const maxLevels = (this.gameLog.config as any).maxLevels || 1;
 
@@ -138,6 +148,7 @@ export class HostEngine {
             return {
                 dungeon: firstLevel,
                 entities: entityList,
+                groundItems: [],
                 turn: 0,
                 seed,
                 currentLevel: 0,
@@ -164,6 +175,7 @@ export class HostEngine {
             return {
                 dungeon: tiles,
                 entities: entityList,
+                groundItems: [],
                 turn: 0,
                 seed,
                 currentLevel: 0,
@@ -173,6 +185,115 @@ export class HostEngine {
         }
     }
 
+    /**
+     * Create state from custom level data (from Level Editor).
+     * This ensures saved games with designer levels restore identically.
+     */
+    private createStateFromCustomLevel(levelData: any, seed: number): GameState {
+        console.log('[HostEngine] Parsing custom level data:', {
+            hasTiles: !!levelData.tiles,
+            tileRows: levelData.tiles?.length,
+            hasEnrichedEntities: !!levelData.enrichedEntities,
+            enrichedEntityCount: levelData.enrichedEntities?.length || 0,
+            hasEnrichedItems: !!levelData.enrichedItems,
+            enrichedItemCount: levelData.enrichedItems?.length || 0,
+            enemySpawns: levelData.enemySpawns?.length || 0,
+            items: levelData.items?.length || 0
+        });
+
+        // Convert tiles to dungeon format
+        const dungeon = levelData.tiles.map((row: any[]) =>
+            row.map(tileType => ({ type: tileType, seen: false }))
+        );
+
+        // Use enriched entities if available (from save), otherwise fall back to spawns
+        let entityList: Entity[];
+
+        if (levelData.enrichedEntities && levelData.enrichedEntities.length > 0) {
+            // Use pre-enriched entities from saved game
+            console.log('[HostEngine] Using enriched entities from save');
+            entityList = levelData.enrichedEntities.map((entity: any, index: number) => {
+                // Ensure proper structure
+                const restored = {
+                    ...entity,
+                    pos: entity.pos || { x: entity.x, y: entity.y }
+                };
+                // Register AI for enemies
+                if (entity.type === 'enemy' || entity.id?.startsWith('enemy_')) {
+                    this.aiPlayers.set(entity.id, new ReactiveBot(entity.id));
+                }
+                return restored as Entity;
+            });
+        } else {
+            // Fallback: create entities from spawns (original behavior)
+            entityList = [];
+            const spawns = levelData.enemySpawns || [];
+            spawns.forEach((spawn: any, index: number) => {
+                const entityId = spawn.entityId || spawn.id;
+                const pos = { x: spawn.x, y: spawn.y };
+
+                // Try to create from registry, fallback to basic enemy
+                let enemy = this.registry.createEntity(entityId, `enemy_${index}`, pos);
+
+                if (!enemy) {
+                    // Fallback: create basic enemy from spawn data
+                    console.log(`[HostEngine] Entity ${entityId} not in registry, creating from spawn data`);
+                    enemy = {
+                        id: `enemy_${index}`,
+                        type: 'enemy' as any,
+                        pos,
+                        hp: spawn.hp || 10,
+                        maxHp: spawn.maxHp || spawn.hp || 10,
+                        attack: spawn.attack || 1,
+                        defense: spawn.defense || 0,
+                        xp: 0,
+                        level: spawn.level || 1,
+                        aiBehavior: spawn.aiBehavior
+                    };
+                }
+
+                entityList.push(enemy);
+                this.aiPlayers.set(`enemy_${index}`, new ReactiveBot(`enemy_${index}`));
+            });
+        }
+
+        // Use enriched items if available (from save), otherwise fall back to raw items
+        let groundItems: any[];
+
+        if (levelData.enrichedItems && levelData.enrichedItems.length > 0) {
+            // Use pre-enriched items from saved game
+            console.log('[HostEngine] Using enriched items from save');
+            groundItems = levelData.enrichedItems.map((item: any) => ({
+                ...item,
+                pos: item.pos || { x: item.x, y: item.y }
+            }));
+        } else {
+            // Fallback: load ground items from raw level data
+            groundItems = (levelData.items || []).map((item: any) => {
+                const x = item.pos?.x ?? item.x;
+                const y = item.pos?.y ?? item.y;
+                return {
+                    ...item,
+                    x,
+                    y,
+                    pos: { x, y }  // Ensure pos object exists for auto-pickup
+                };
+            });
+        }
+
+        console.log(`[HostEngine] Custom level state created: ${entityList.length} enemies, ${groundItems.length} items`);
+
+        return {
+            dungeon,
+            entities: entityList,
+            groundItems,
+            turn: 0,
+            seed,
+            currentLevel: 0,
+            maxLevels: 1,
+            victoryAchieved: false
+        };
+    }
     private findFloorTile(dungeon: GameState['dungeon'], exclude: Position[] = []): Position {
         for (let y = 0; y < dungeon.length; y++) {
             for (let x = 0; x < dungeon[y].length; x++) {
@@ -224,6 +345,7 @@ export class HostEngine {
         const userId = persistentId || peerId;
         console.log(`[HostEngine.connect] peerId=${peerId}, userId=${userId}`);
         console.log(`[HostEngine.connect] BEFORE: connectedPlayers=`, Array.from(this.connectedPlayers.entries()));
+        console.log(`[HostEngine.connect] All entity IDs in state:`, this.state.entities.map(e => e.id));
         this.connectedPlayers.set(peerId, userId);
         console.log(`[HostEngine.connect] AFTER: connectedPlayers=`, Array.from(this.connectedPlayers.entries()));
 
@@ -234,6 +356,7 @@ export class HostEngine {
 
         // IDENTITY MARRIAGE: If player already exists (from replayed save), don't spawn again!
         const existing = this.state.entities.find(e => e.id === userId);
+        console.log(`[HostEngine.connect] Looking for existing entity with id='${userId}', found:`, existing ? `YES (hp=${existing.hp}, xp=${(existing as any).xp}, pos=${JSON.stringify(existing.pos)})` : 'NO');
         if (!existing) {
             const result = resolveTurn(this.state, joinAction, this.registry);
             this.state = result.nextState;
@@ -419,6 +542,9 @@ export class HostEngine {
                 events,
                 timestamp: Date.now()
             });
+            // Save complete state snapshot for reliable restore
+            // Action replay is non-deterministic for complex state (items, equipment, etc.)
+            this.gameLog.stateSnapshot = JSON.parse(JSON.stringify(this.state));
         }
 
         // Include current state so clients get AI behavior updates
@@ -438,6 +564,32 @@ export class HostEngine {
     public static fromLog(log: GameLog, registry?: ModRegistry): HostEngine {
         console.log(`[HostEngine] Reconstructing from log. GameID: ${log.meta.gameId}, Turns: ${log.turns.length}`);
         const engine = new HostEngine(log.config.dungeonSeed, log.config, registry);
+
+        // METHOD 1: Fast Restore via State Snapshot (Preferred)
+        if (log.stateSnapshot) {
+            console.log('[HostEngine] Found state snapshot in log - restoring directly (skipping replay)');
+            engine.state = JSON.parse(JSON.stringify(log.stateSnapshot));
+
+            // Re-initialize AI players based on entities present in the state
+            engine.aiPlayers.clear();
+            engine.state.entities.forEach(entity => {
+                if (entity.id.startsWith('ai-') || (entity.type === 'enemy' && entity.aiBehavior)) {
+                    engine.aiPlayers.set(entity.id, new ReactiveBot(entity.id));
+                }
+            });
+
+            // Restore game log structure so new actions can be appended
+            engine.gameLog = JSON.parse(JSON.stringify(log));
+
+            // Clear connected players - they need to rejoin via connect()
+            engine.connectedPlayers.clear();
+
+            console.log(`[HostEngine] SNAPSHOT RESTORE SUCCESS. Turn: ${engine.state.turn}`);
+            return engine;
+        }
+
+        // METHOD 2: Replay Action Log (Legacy/Fallback)
+        console.log('[HostEngine] No snapshot found - falling back to action replay');
         engine.isReplaying = true;
 
         for (let i = 0; i < log.turns.length; i++) {
