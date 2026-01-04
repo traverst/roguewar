@@ -23,6 +23,7 @@ export class EditorsApp {
                 <button class="nav-btn" data-editor="campaign">Campaign Editor</button>
                 <button class="nav-btn" data-editor="entity">Entity Editor</button>
                 <button class="nav-btn" data-editor="item">Item Editor</button>
+                <button class="nav-btn" data-editor="progression">Progression</button>
             </nav>
             
             <div class="main-content">
@@ -32,6 +33,7 @@ export class EditorsApp {
                 ${this.renderPlaceholderPanel('campaign', 'Campaign Editor', 'Design campaign flows')}
                 ${this.renderPlaceholderPanel('entity', 'Entity Editor', 'Configure enemies and NPCs')}
                 ${this.renderPlaceholderPanel('item', 'Item Editor', 'Design weapons, armor, and items')}
+                ${this.renderPlaceholderPanel('progression', 'Progression Editor', 'Configure XP curves and level rewards')}
             </div>
         `;
 
@@ -92,6 +94,14 @@ export class EditorsApp {
                                 Design weapons, armor, and consumables with damage types and status effects.
                             </p>
                             <button class="btn" onclick="window.switchEditor('item')">Open Item Editor</button>
+                        </div>
+                        
+                        <div class="panel">
+                            <div class="panel-title">📊 Progression Editor</div>
+                            <p style="color: var(--text-secondary); margin-bottom: var(--spacing-md);">
+                                Configure XP curves, level rewards, and skill definitions.
+                            </p>
+                            <button class="btn" onclick="window.switchEditor('progression')">Open Progression Editor</button>
                         </div>
                     </div>
                 </div>
@@ -342,6 +352,11 @@ export class EditorsApp {
             case 'item':
                 import('./item-editor/ItemEditor').then(module => {
                     new module.ItemEditor(root);
+                });
+                break;
+            case 'progression':
+                import('./progression-editor/ProgressionEditor').then(module => {
+                    new module.ProgressionEditor(root);
                 });
                 break;
         }
