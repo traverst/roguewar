@@ -1,9 +1,9 @@
-import { GameState, Action, Entity, EntityType, GameEvent, Position, GroundItem, EquipSlot } from './types';
+import { GameState, Action, Entity, EntityType, GameEvent, Position, GroundItem } from './types';
 import { mulberry32 } from './rng';
 import { ModRegistry } from './mods';
 import { addItem, removeItem } from './inventory';
-import { equipItem, unequipItem, getDefaultSlot } from './equipment';
-import { resolveAttack, applyTurnStartEffects } from './combat/combatEngine';
+import { equipItem, getDefaultSlot } from './equipment';
+import { resolveAttack } from './combat/combatEngine';
 import { DEFAULT_STAT_DEFINITIONS } from './combat/statDefinitions';
 
 // Helper to deep clone state (essential for pure functions)
@@ -129,7 +129,7 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
                             fumble: false
                         };
                         console.log('[Core] ATTACK EVENT:', attackedEvent);
-                        events.push(attackedEvent);
+                        events.push(attackedEvent as any);
                     }
                     events.push(...combatResult.events as any[]);
 
@@ -257,18 +257,19 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
                         for (const groundItem of itemsAtPos) {
                             // Initialize inventory if needed
                             if (!actor.inventory) {
-                                actor.inventory = { slots: [], equipment: {} };
+                                actor.inventory = { capacity: 20, slots: [] };
+                                if (!(actor as any).equipment) (actor as any).equipment = { slots: {} };
                             }
 
                             // Add item to inventory - strip ground-only fields (pos, id, isLoot)
                             const { x, y, id, pos, isLoot, ...itemData } = groundItem as any;
-                            actor.inventory.slots.push({
+                            actor.inventory!.slots.push({
                                 itemId: id,         // Rename id to itemId for inventory
                                 ...itemData,        // All other item data (damage, defence, customProperties, etc.)
                                 quantity: 1
                             });
 
-                            console.log('[Core] Picked up item with data:', actor.inventory.slots[actor.inventory.slots.length - 1]);
+                            console.log('[Core] Picked up item with data:', actor.inventory!.slots[actor.inventory!.slots.length - 1]);
 
                             // Remove from ground
                             const idx = state.groundItems.indexOf(groundItem);
@@ -330,7 +331,7 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
                 const inventory = (actor as any).inventory;
                 const equipment = (actor as any).equipment || { slots: {} };
 
-                if (!inventory) return;
+                if (!inventory) return { nextState: state, events };
 
                 const itemSlotIndex = inventory.slots.findIndex((s: any) => s.itemId === itemId);
                 console.log('[Core] Found item at index:', itemSlotIndex);
@@ -623,17 +624,22 @@ export function resolveTurn(initialState: GameState, action: Action, registry?: 
                     attack: 0,  // Base attack bonus (before equipment)
                     defense: 10,  // Base AC (lower is better, armor subtracts)
                     // D&D Ability Scores
+                } as Entity;
+                // Add attributes via cast since they aren't on Entity interface
+                Object.assign(newPlayer, {
                     strength: 12,      // Affects melee damage (+1 modifier)
                     dexterity: 14,     // Affects AC and attack rolls (+2 modifier)
                     constitution: 13,  // Affects HP (+1 modifier)
                     intelligence: 10,  // Future: spells, skills (0 modifier)
                     wisdom: 11,        // Future: perception, willpower (+0 modifier)
                     charisma: 10   // Future: social, leadership (0 modifier)
-                };
+                });
             }
 
-            state.entities.push(newPlayer);
-            events.push({ type: 'spawned', entityId: newPlayer.id, pos: newPlayer.pos, entity: newPlayer });
+            if (newPlayer) {
+                state.entities.push(newPlayer);
+                events.push({ type: 'spawned', entityId: newPlayer.id, pos: newPlayer.pos, entity: newPlayer });
+            }
         }
     }
 

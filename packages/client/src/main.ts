@@ -12,10 +12,8 @@ import { HostEngine } from '@roguewar/authority';
 import { CORE_CONTENT, GameLog, GameState, EntityType } from '@roguewar/rules';
 import { ModLoader } from './mods/ModLoader';
 import { MetaGameContext } from './meta/MetaGameContext';
-import { campaignManager } from './meta';
 import { ProfileUI } from './ui/ProfileUI';
 import { CampaignMapUI } from './ui/CampaignMapUI';
-import { UnlockNotification } from './ui/UnlockNotification';
 import { processRunCompletion } from './meta/runCompletion';
 import { ContentLibrary } from './editors/utils/ContentLibrary';
 
@@ -1129,7 +1127,7 @@ async function init() {
     };
 
     // Combined state change handler
-    manager.onGameStateChanged = (state, connectedIds) => {
+    manager.onGameStateChanged = (state, _connectedIds) => {
       // Update spectator list if in spectate mode
       if (updatePlayerList) {
         updatePlayerList();

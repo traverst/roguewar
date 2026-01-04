@@ -61,7 +61,7 @@ export class PeerTransport implements Transport {
                             console.error("[PeerTransport] Failed to parse JSON:", e);
                         }
                     } else {
-                        console.log("[PeerTransport] Object message:", data.type);
+                        console.log("[PeerTransport] Object message:", (data as any).type);
                         this.dispatch(data as ServerMessage);
                     }
                 });

@@ -10,7 +10,7 @@ interface ItemTemplate {
     icon?: string;
 
     // Weapon-specific
-    damage?: number;
+    damage?: number | string;
     damageType?: 'slashing' | 'piercing' | 'bludgeoning' | 'fire' | 'ice' | 'lightning';
     attackSpeed?: 'slow' | 'normal' | 'fast';
     attackBonus?: number;  // Bonus to attack roll (+1, +2, etc.)

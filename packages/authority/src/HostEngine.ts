@@ -504,7 +504,7 @@ export class HostEngine {
             console.log(`[HostEngine] Processing AI for ${enemy.name} (${enemy.id})`);
 
             // Create AI bot for this enemy using its aiBehavior config
-            const bot = new ReactiveBot(enemy.aiBehavior);
+            const bot = new ReactiveBot(enemy.id);
             const perception = createPerception(this.state, enemy.id);
             const aiAction = bot.decide(perception);
 
@@ -976,7 +976,7 @@ export class HostEngine {
         );
 
         for (const enemy of staticEnemies) {
-            const bot = new ReactiveBot(enemy.aiBehavior);
+            const bot = new ReactiveBot(enemy.id);
             const perception = createPerception(this.state, enemy.id);
             const aiAction = bot.decide(perception);
             aiAction.actorId = enemy.id;

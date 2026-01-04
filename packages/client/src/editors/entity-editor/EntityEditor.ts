@@ -21,7 +21,7 @@ export class EntityEditor {
         tags: [],
         inventory: { slots: [] },  // Loot items this entity drops on death
         equipment: { slots: {} }    // Equipped weapons and armor
-    };
+    } as any;
 
     private spriteTemplate: string = 'goblin';
 

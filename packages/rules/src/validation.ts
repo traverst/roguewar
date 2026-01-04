@@ -152,7 +152,7 @@ export function validateItem(item: ItemTemplate): ValidationResult {
     if (!item.name) {
         errors.push({ field: 'name', message: 'Name is required', severity: 'error' });
     }
-    if (item.damage !== undefined && item.damage < 0) {
+    if (item.damage !== undefined && typeof item.damage === 'number' && item.damage < 0) {
         errors.push({ field: 'damage', message: 'Damage cannot be negative', severity: 'error' });
     }
     if (item.defense !== undefined && item.defense < 0) {

@@ -20,6 +20,7 @@ export class ClientGameManager {
     public onGameEnd: ((outcome: 'victory' | 'defeat') => void) | null = null;
     public onInventoryUpdate: ((player: any) => void) | null = null;
     public onPhaseChange: ((phase: string, timeRemaining: number, pendingPlayers: string[]) => void) | null = null;
+    public onStateUpdate: ((state: GameState) => void) | null = null;
 
     constructor(renderer: CanvasRenderer, input: InputManager, transport: Transport, registry: ModRegistry | null = null) {
         this.renderer = renderer;
@@ -85,7 +86,7 @@ export class ClientGameManager {
         this.net.send({ type: 'identity', userId });
     }
 
-    private handleDelta(msg: { turn: number; events: GameEvent[]; action: Action; currentState?: GameState }) {
+    public handleDelta(msg: { turn: number; events: GameEvent[]; action: Action; currentState?: GameState }) {
         console.log(`[Client] HandleDelta Turn ${msg.turn} | Action: ${msg.action.type} by ${msg.action.actorId} | Me: ${this.localPlayerId}`);
 
         if (!this.authoritativeState) return;
@@ -102,14 +103,19 @@ export class ClientGameManager {
 
         this.predictedState = JSON.parse(JSON.stringify(this.authoritativeState));
 
+        if (this.onStateUpdate && this.predictedState) {
+            this.onStateUpdate(this.predictedState);
+        }
+
         // DEBUG: Log HP values after state update
         if (this.localPlayerId) {
-            const myEntity = this.predictedState.entities.find((e: any) => e.id === this.localPlayerId);
+            const myEntity = this.predictedState?.entities.find((e: any) => e.id === this.localPlayerId);
             console.log(`[Client] After state update - My entity HP: ${myEntity?.hp}/${myEntity?.maxHp} (id: ${this.localPlayerId})`);
 
             // Update inventory UI when state changes (not every frame!)
-            if (this.onInventoryUpdate && myEntity) {
-                this.onInventoryUpdate(myEntity);
+            const onInv = this.onInventoryUpdate;
+            if (onInv && myEntity) {
+                onInv(myEntity);
             }
         }
 

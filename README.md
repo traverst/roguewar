@@ -23,6 +23,7 @@ A browser-based **peer-to-peer multiplayer roguelike** with deterministic gamepl
 
 ### Status Effects System
 - 😵 **Stunned**: Skip next action (from fumbles) - entity still takes turn for multiplayer compatibility
+- 💤 **Sleeping**: Regenerate HP over time. Interrupted by damage or movement.
 - 🧪 **Extensible**: Framework supports poison, blessed, cursed, and other effects
 
 ### Equipment & Inventory
@@ -98,6 +99,20 @@ Then open [http://localhost:5173](http://localhost:5173).
 - Look for the "Network:" URLs in the terminal output
 - Use those URLs on other devices (phones, tablets, other computers)
 
+### 🚀 Deployment
+
+The client is fully static and ready for deployment to **GitHub Pages** or any static host.
+
+1. **Build the client**:
+   ```bash
+   npm run build:client
+   ```
+2. **Deploy the `packages/client/dist` folder**:
+   - This folder contains the complete, standalone game application.
+   - It is configured to use the public `0.peerjs.com` signalling server, so no backend is required!
+
+See [deployment_guide.md](deployment_guide.md) for detailed instructions.
+
 ## 🎮 How to Play
 
 ### Hosting a Game
@@ -134,7 +149,13 @@ Then open [http://localhost:5173](http://localhost:5173).
 
 1. Click **"REPLAY"** on any saved game
 2. Use the timeline controls to scrub through turns
-3. Watch the game unfold turn-by-turn
+3. Watch the game in turn-by-turn playback
+
+### Sleep & Regeneration
+
+1. Click **"Sleep"** in the HUD to enter sleep mode.
+2. While sleeping, you regenerate **HP** over time.
+3. Sleeping is automatically interrupted if you take damage or move.
 
 ## 🎯 Game Controls
 
@@ -159,6 +180,9 @@ npm run build -w @roguewar/authority
 
 # Build all packages
 npm run build
+
+# Build client for production (creates packages/client/dist)
+npm run build:client
 ```
 
 ### Mod System

@@ -29,6 +29,7 @@ export interface Entity {
     attack: number;
     defense?: number;
     aiBehavior?: string; // Optional: For AI debugging/visualization
+    name?: string;       // Display name
     statusEffects?: Array<{  // Temporary status effects
         type: 'stunned' | 'poisoned' | 'blessed' | 'cursed' | 'sleeping';
         duration: number;
@@ -78,7 +79,7 @@ export type GameStateStrict = {
 }
 
 // Events
-export type GameEventType = 'moved' | 'attacked' | 'killed' | 'wait' | 'spawned' | 'victory' | 'defeat' | 'level_transition';
+export type GameEventType = 'moved' | 'attacked' | 'killed' | 'wait' | 'spawned' | 'victory' | 'defeat' | 'level_transition' | 'message' | 'status_effect' | 'item_used' | 'item_dropped';
 
 export interface GameEvent {
     type: GameEventType;
@@ -148,6 +149,8 @@ export interface GroundItem {
     itemId: string;     // Reference to item template
     pos: Position;      // Location in dungeon
     quantity: number;   // Stack size
+    name?: string;      // Cached display name
+    icon?: string;      // Cached display icon
 }
 
 /**
